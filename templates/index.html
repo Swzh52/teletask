@@ -1,1 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TG Bot 管理后台</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#333;padding:20px}
+
+.topnav{display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:20px;flex-wrap:wrap;gap:10px}
+h1{font-size:1.4rem;color:#5b4fcf}
+.nav-btns{display:flex;gap:8px}
+.nav-link{font-size:.85rem;color:#0f6e56;text-decoration:none;
+  border:1px solid #b2dfd4;padding:5px 14px;border-radius:6px;white-space:nowrap}
+.nav-link:hover{background:#e6f9f0}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));
+  gap:12px;margin-bottom:20px}
+.stat-card{background:#fff;border-radius:10px;padding:14px;text-align:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.stat-num{font-size:1.6rem;font-weight:600;color:#5b4fcf}
+.stat-label{font-size:.76rem;color:#888;margin-top:4px}
+
+.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;
+  box-shadow:0 1px 4px rgba(0,0,0,.08)}
+h2{font-size:1rem;margin:0 0 16px;color:#444}
+
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin-top:4px}
+th{text-align:left;padding:8px 10px;background:#f0eefb;color:#5b4fcf;font-weight:500}
+td{padding:8px 10px;border-bottom:1px solid #f5f5f5;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+code{font-size:.78rem;background:#f5f5f5;padding:2px 6px;border-radius:4px;
+  word-break:break-all}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem}
+.on{background:#e6f9f0;color:#0f6e56}
+.off{background:#f5f5f5;color:#888}
+.type-badge{background:#eeedfe;color:#534ab7;display:inline-block;
+  padding:2px 8px;border-radius:10px;font-size:.75rem}
+.once-badge{background:#fff3cd;color:#856404;display:inline-block;
+  padding:2px 8px;border-radius:10px;font-size:.75rem;margin-left:4px}
+.mode-badge-all{background:#fff3cd;color:#856404}
+.mode-badge-rnd{background:#eeedfe;color:#534ab7}
+
+.btn{display:inline-block;padding:4px 10px;border-radius:6px;font-size:.78rem;
+  text-decoration:none;border:none;cursor:pointer;margin-right:3px;white-space:nowrap}
+.btn-del{background:#fde8e8;color:#a32d2d}
+.btn-tog{background:#eeedfe;color:#534ab7}
+.btn-edit{background:#e6f9f0;color:#0f6e56}
+.btn-rm{background:#fde8e8;color:#a32d2d;border:none;border-radius:4px;
+  padding:5px 10px;cursor:pointer;font-size:.8rem;white-space:nowrap}
+
+label{font-size:.82rem;color:#555;display:block;margin-top:12px;margin-bottom:4px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid #ddd;
+  border-radius:6px;font-size:.875rem;background:#fff;color:#333}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#5b4fcf;
+  box-shadow:0 0 0 2px rgba(91,79,207,.1)}
+textarea{height:72px;resize:vertical}
+.g2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+.g3{display:grid;gap:12px;grid-template-columns:1fr 1fr 1fr}
+.g4{display:grid;gap:12px;grid-template-columns:1fr 1fr 1fr 1fr}
+
+.submit{margin-top:16px;background:#5b4fcf;color:#fff;padding:9px 22px;
+  border:none;border-radius:6px;cursor:pointer;font-size:.875rem;transition:background .15s}
+.submit:hover{background:#4a3db8}
+
+.tip{font-size:.74rem;color:#aaa;margin-top:4px;line-height:1.5}
+.tip-box{background:#f0eefb;border-radius:8px;padding:12px 16px;margin-bottom:16px;
+  font-size:.82rem;color:#534ab7;line-height:1.8}
+.empty{color:#bbb;font-size:.875rem;text-align:center;padding:24px}
+.section-divider{margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f0}
+
+.time-bar{display:flex;align-items:flex-end;gap:10px}
+.now-time{font-size:.82rem;color:#5b4fcf;background:#f0eefb;
+  padding:5px 10px;border-radius:6px;white-space:nowrap;line-height:1.6}
+
+.cron-examples{font-size:.75rem;color:#888;margin-top:6px;line-height:2}
+.cron-examples span{display:inline-block;background:#f5f5f5;border-radius:4px;
+  padding:1px 7px;margin:2px 4px 2px 0;cursor:pointer;font-family:monospace;
+  border:1px solid #eee;transition:all .15s}
+.cron-examples span:hover{background:#eeedfe;color:#5b4fcf;border-color:#c5c0f0}
+
+.mode-radio{display:flex;gap:20px;margin-top:8px;align-items:center}
+.mode-radio label{display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;
+  font-size:.875rem;color:#333;font-weight:normal}
+.mode-radio input[type=radio]{width:auto;padding:0}
+
+/* 回复条目卡片 */
+.reply-item{border:1px solid #eee;border-radius:8px;padding:14px;
+  margin-bottom:10px;background:#fafafa;position:relative}
+.reply-item-header{display:flex;justify-content:space-between;
+  align-items:center;margin-bottom:10px}
+.reply-item-label{font-size:.8rem;color:#888;font-weight:500}
+.reply-item-body{display:grid;gap:8px;grid-template-columns:140px 1fr}
+
+/* 相册编辑器 */
+.album-editor{border:1px dashed #ddd;border-radius:8px;padding:12px;
+  margin-top:6px;background:#f5f5f5}
+.album-item{display:grid;grid-template-columns:90px 1fr 1fr auto;
+  gap:8px;align-items:center;margin-bottom:8px}
+.album-item:last-child{margin-bottom:0}
+.album-item input,.album-item select{margin-top:0}
+.btn-add-item{background:#eeedfe;color:#5b4fcf;border:1px solid #c5c0f0;
+  border-radius:6px;padding:6px 14px;cursor:pointer;font-size:.82rem;
+  margin-top:8px;transition:background .15s}
+.btn-add-item:hover{background:#dddaf8}
+.album-hint{font-size:.75rem;color:#aaa;margin-top:4px}
+
+input.search{padding:7px 12px;border:1px solid #ddd;border-radius:6px;
+  font-size:.875rem;width:240px;margin-bottom:0}
+
+/* 弹窗 */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+  z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:14px;padding:28px;width:min(700px,95vw);
+  max-height:90vh;overflow-y:auto;position:relative;
+  box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.modal h3{font-size:1rem;color:#5b4fcf;margin-bottom:16px;padding-right:30px}
+.modal-close{position:absolute;top:14px;right:18px;background:none;border:none;
+  font-size:1.4rem;cursor:pointer;color:#aaa;line-height:1;transition:color .15s}
+.modal-close:hover{color:#333}
+
+@media(max-width:700px){
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .reply-item-body{grid-template-columns:1fr}
+  .album-item{grid-template-columns:1fr 1fr;row-gap:6px}
+  .album-item .btn-rm{grid-column:span 2}
+  .time-bar{flex-direction:column;align-items:stretch}
+}
+</style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<div class="topnav">
+  <h1>🤖 TG Bot 管理后台</h1>
+  <div class="nav-btns">
+    <a class="nav-link" href="/stats" target="_blank">📊 统计信息</a>
+    <a class="nav-link" href="/files" target="_blank">📁 文件库</a>
+  </div>
+</div>
+
+<!-- 概览统计 -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.kw_active }}</div>
+    <div class="stat-label">启用关键词</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#0f6e56">{{ stats.sc_active }}</div>
+    <div class="stat-label">运行中任务</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#185fa5">{{ stats.kw_triggers }}</div>
+    <div class="stat-label">关键词触发数</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#856404">{{ stats.sc_done }}</div>
+    <div class="stat-label">任务完成次数</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#a32d2d">{{ stats.banned }}</div>
+    <div class="stat-label">封禁用户</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.files }}</div>
+    <div class="stat-label">文件记录数</div>
+  </div>
+</div>
+
+<!-- 说明 -->
+<div class="card">
+  <div class="tip-box">
+    📎 <b>获取 file_id：</b>管理员直接把图片/视频/文件/贴纸发给 Bot（私聊），Bot 自动回复 file_id，同时记录到
+    <a href="/files" target="_blank" style="color:#5b4fcf">文件库</a>。<br>
+    📸 <b>相册模式：</b>最多9个文件，图片+视频混合均可，第一个文件的说明文字显示在相册下方。<br>
+    🔑 <b>多条回复：</b>一个关键词可以绑定多条不同类型的回复，支持随机一条或全部发送。<br>
+    🔂 <b>一次性任务：</b>选择具体执行时间，任务触发一次后自动停用。
+  </div>
+</div>
+
+<!-- ==================== 关键词自动回复 ==================== -->
+<div class="card">
+  <h2>🔑 关键词自动回复</h2>
+  <form method="post" action="/kw/add" id="kw-add-form"
+    onsubmit="packAllAlbums('add-kw');return true">
+    <div class="g3">
+      <div>
+        <label>关键词 / 正则</label>
+        <input name="pattern" required placeholder="例：价格">
+      </div>
+      <div>
+        <label>匹配方式</label>
+        <select name="match">
+          <option value="contains">包含（contains）</option>
+          <option value="exact">精确（exact）</option>
+          <option value="regex">正则（regex）</option>
+        </select>
+      </div>
+      <div>
+        <label>触发模式</label>
+        <div class="mode-radio">
+          <label><input type="radio" name="mode" value="random" checked> 随机一条</label>
+          <label><input type="radio" name="mode" value="all"> 全部发送</label>
+        </div>
+        <p class="tip">随机：每次随机选一条 ｜ 全部：依次发送所有回复</p>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <label>回复内容（可添加多条不同类型的回复）</label>
+      <div id="add-kw-replies-editor"></div>
+      <button type="button" class="btn-add-item" style="margin-top:8px"
+        onclick="addReplyItem('add-kw-replies-editor','add-kw')">＋ 添加一条回复</button>
+    </div>
+
+    <button class="submit" type="submit">➕ 添加关键词</button>
+  </form>
+
+  <!-- 分隔线 + 搜索 -->
+  {% if keywords %}
+  <div class="section-divider">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:.85rem;color:#888">共 {{ keywords|length }} 条规则</span>
+      <input class="search" id="kw-search" placeholder="搜索关键词…"
+        oninput="filterTable('kw-search','kw-table')">
+    </div>
+    <table id="kw-table">
+      <tr>
+        <th>关键词</th><th>匹配</th><th>模式</th>
+        <th>回复数</th><th>首条预览</th><th>状态</th><th>操作</th>
+      </tr>
+      {% for kw in keywords %}
+      <tr>
+        <td><code>{{ kw.pattern }}</code></td>
+        <td>{{ kw.match }}</td>
+        <td>
+          {% if kw.mode == 'all' %}
+            <span class="badge mode-badge-all">全部</span>
+          {% else %}
+            <span class="badge mode-badge-rnd">随机</span>
+          {% endif %}
+        </td>
+        <td style="text-align:center">
+          <b style="color:#5b4fcf">{{ kw.replies|length }}</b> 条
+        </td>
+        <td>
+          {% if kw.replies %}
+            {% set r = kw.replies[0] %}
+            <span class="type-badge">{{ r.reply_type }}</span>
+            {% if r.reply_type == 'text' %}
+              {{ (r.reply_text or '')[:28] }}{% if (r.reply_text or '')|length > 28 %}…{% endif %}
+            {% elif r.reply_type == 'media_group' %}
+              <span style="color:#888">相册</span>
+            {% else %}
+              <code>{{ (r.reply_file_id or '')[:18] }}…</code>
+            {% endif %}
+            {% if kw.replies|length > 1 %}
+              <span style="color:#aaa;font-size:.74rem"> +{{ kw.replies|length - 1 }}条</span>
+            {% endif %}
+          {% else %}
+            <span style="color:#ccc">无回复</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="badge {{ 'on' if kw.active else 'off' }}">
+            {{ '启用' if kw.active else '停用' }}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-edit" onclick="openKwEdit({{ kw.id }})">编辑</button>
+          <a class="btn btn-tog" href="/kw/toggle/{{ kw.id }}">
+            {{ '停用' if kw.active else '启用' }}
+          </a>
+          <a class="btn btn-del" href="/kw/delete/{{ kw.id }}"
+            onclick="return confirm('确认删除关键词「{{ kw.pattern }}」？')">删除</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <p class="empty" style="margin-top:20px">暂无关键词规则，添加一条试试吧</p>
+  {% endif %}
+</div>
+
+<!-- ==================== 定时推送任务 ==================== -->
+<div class="card">
+  <h2>⏰ 定时推送任务</h2>
+  <form method="post" action="/sc/add" id="sc-add-form"
+    onsubmit="return beforeScSubmit('add')">
+    <div class="g4">
+      <div>
+        <label>任务名称</label>
+        <input name="name" required placeholder="例：早报推送">
+      </div>
+      <div>
+        <label>Chat ID</label>
+        <input name="chat_id" required placeholder="-1001234567890">
+        <p class="tip">群组以 -100 开头，向 @get_id_bot 发消息获取</p>
+      </div>
+      <div>
+        <label>任务模式</label>
+        <div class="mode-radio">
+          <label>
+            <input type="radio" name="once" value="0" checked
+              onchange="toggleOnceMode(this,'add')"> 周期执行
+          </label>
+          <label>
+            <input type="radio" name="once" value="1"
+              onchange="toggleOnceMode(this,'add')"> 一次性
+          </label>
+        </div>
+      </div>
+      <div>
+        <label>消息类型</label>
+        <select name="msg_type" onchange="toggleScFields(this,'sc-add')">
+          <option value="text">📝 文本</option>
+          <option value="photo">🖼 图片</option>
+          <option value="video">🎬 视频</option>
+          <option value="audio">🎵 音频</option>
+          <option value="document">📄 文件</option>
+          <option value="animation">🎞 动图 GIF</option>
+          <option value="voice">🎤 语音</option>
+          <option value="sticker">🎭 贴纸</option>
+          <option value="media_group">📸 相册</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 周期 cron -->
+    <div id="add-cron-wrap" style="margin-top:4px">
+      <div class="time-bar" style="margin-top:12px">
+        <div style="flex:1">
+          <label>Cron 表达式（分 时 日 月 周）</label>
+          <input name="cron" id="cron-input" placeholder="0 9 * * *">
+        </div>
+        <div>
+          <label style="visibility:hidden">占</label>
+          <div class="now-time" id="now-time">--:--:--</div>
+        </div>
+      </div>
+      <div class="cron-examples">
+        快填：
+        <span onclick="setCron('*/1 * * * *')">*/1 * * * * 每分钟</span>
+        <span onclick="setCron('*/5 * * * *')">*/5 * * * * 每5分钟</span>
+        <span onclick="setCron('0 * * * *')">0 * * * * 每小时</span>
+        <span onclick="setCron('0 9 * * *')">0 9 * * * 每天9点</span>
+        <span onclick="setCron('0 9 * * 1-5')">0 9 * * 1-5 工作日9点</span>
+        <span onclick="setCron('0 8,12,20 * * *')">0 8,12,20 * * * 每天3次</span>
+        <span onclick="setCron('0 0 * * 1')">0 0 * * 1 每周一</span>
+        <span onclick="setCron('0 10 1 * *')">0 10 1 * * 每月1日</span>
+      </div>
+      <p class="tip" style="margin-top:6px">
+        格式：<b>分(0-59)</b> <b>时(0-23)</b> <b>日(1-31)</b> <b>月(1-12)</b> <b>周(0-7)</b><br>
+        <b>*</b>=任意 &nbsp; <b>*/n</b>=每n单位 &nbsp; <b>a,b</b>=多个值 &nbsp; <b>a-b</b>=范围
+      </p>
+    </div>
+
+    <!-- 一次性时间 -->
+    <div id="add-once-wrap" style="display:none;margin-top:12px">
+      <label>执行时间（精确到分钟）</label>
+      <input type="datetime-local" name="run_at" id="run-at-input">
+      <p class="tip">选择具体的日期和时间，任务触发一次后自动停用</p>
+    </div>
+
+    <!-- 消息内容 -->
+    <div id="sc-add-text-row" style="margin-top:4px">
+      <label>推送文本内容</label>
+      <textarea name="msg_text" placeholder="定时推送的文字内容..."></textarea>
+    </div>
+    <div id="sc-add-file-row" style="display:none">
+      <label>file_id（将媒体发给 Bot 获取）</label>
+      <input name="msg_file_id" placeholder="AgACAgIAAxk...">
+    </div>
+    <div id="sc-add-caption-row" style="display:none">
+      <label>媒体说明文字（可选）</label>
+      <input name="msg_caption" placeholder="图片/视频附加说明">
+    </div>
+    <div id="sc-add-album-row" style="display:none">
+      <label>相册文件列表（最多9个）</label>
+      <div class="album-editor" id="sc-add-album-editor"></div>
+      <button type="button" class="btn-add-item"
+        onclick="addAlbumItem('sc-add-album-editor','sc-add-album-json')">＋ 添加文件</button>
+      <p class="album-hint">第一个文件的说明文字会作为相册标题</p>
+      <input type="hidden" name="msg_file_id" id="sc-add-album-json">
+    </div>
+
+    <button class="submit" type="submit">➕ 添加定时任务</button>
+  </form>
+
+  {% if schedules %}
+  <div class="section-divider">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:.85rem;color:#888">共 {{ schedules|length }} 条任务</span>
+      <input class="search" id="sc-search" placeholder="搜索任务名、Chat ID…"
+        oninput="filterTable('sc-search','sc-table')">
+    </div>
+    <table id="sc-table">
+      <tr>
+        <th>任务名</th><th>Chat ID</th><th>时间/Cron</th>
+        <th>类型</th><th>内容预览</th><th>状态</th><th>操作</th>
+      </tr>
+      {% for s in schedules %}
+      <tr>
+        <td>
+          <b>{{ s.name or '未命名' }}</b>
+          {% if s.once %}<span class="once-badge">一次性</span>{% endif %}
+        </td>
+        <td><code>{{ s.chat_id }}</code></td>
+        <td><code style="font-size:.74rem">{{ s.cron }}</code></td>
+        <td><span class="type-badge">{{ s.msg_type }}</span></td>
+        <td>
+          {% if s.msg_type == 'text' %}
+            {{ (s.msg_text or '')[:34] }}{% if (s.msg_text or '')|length > 34 %}…{% endif %}
+          {% elif s.msg_type == 'media_group' %}
+            <span style="color:#888">相册 多文件</span>
+          {% else %}
+            <code>{{ (s.msg_file_id or '')[:22] }}…</code>
+            {% if s.msg_caption %}
+              <br><span style="color:#888;font-size:.76rem">{{ s.msg_caption }}</span>
+            {% endif %}
+          {% endif %}
+        </td>
+        <td>
+          <span class="badge {{ 'on' if s.active else 'off' }}">
+            {{ '启用' if s.active else '停用' }}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-edit" onclick="openScEdit({{ s.id }})">编辑</button>
+          <a class="btn btn-tog" href="/sc/toggle/{{ s.id }}">
+            {{ '停用' if s.active else '启用' }}
+          </a>
+          <a class="btn btn-del" href="/sc/delete/{{ s.id }}"
+            onclick="return confirm('确认删除任务「{{ s.name }}」？')">删除</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <p class="empty" style="margin-top:20px">暂无定时任务，添加一条试试吧</p>
+  {% endif %}
+</div>
+
+<!-- ==================== 关键词编辑弹窗 ==================== -->
+<div class="modal-overlay" id="kw-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('kw-modal')">✕</button>
+    <h3>✏️ 编辑关键词</h3>
+    <form method="post" id="kw-edit-form"
+      onsubmit="packAllAlbums('edit-kw');return true">
+      <div class="g3">
+        <div>
+          <label>关键词 / 正则</label>
+          <input name="pattern" id="e-kw-pattern" required>
+        </div>
+        <div>
+          <label>匹配方式</label>
+          <select name="match" id="e-kw-match">
+            <option value="contains">包含</option>
+            <option value="exact">精确</option>
+            <option value="regex">正则</option>
+          </select>
+        </div>
+        <div>
+          <label>触发模式</label>
+          <div class="mode-radio">
+            <label><input type="radio" name="mode" value="random" id="e-kw-mode-rnd"> 随机一条</label>
+            <label><input type="radio" name="mode" value="all"    id="e-kw-mode-all"> 全部发送</label>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <label>回复内容</label>
+        <div id="edit-kw-replies-editor"></div>
+        <button type="button" class="btn-add-item" style="margin-top:8px"
+          onclick="addReplyItem('edit-kw-replies-editor','edit-kw')">＋ 添加一条回复</button>
+      </div>
+
+      <button class="submit" type="submit">保存修改</button>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== 定时任务编辑弹窗 ==================== -->
+<div class="modal-overlay" id="sc-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('sc-modal')">✕</button>
+    <h3>✏️ 编辑定时任务</h3>
+    <form method="post" id="sc-edit-form"
+      onsubmit="return beforeScSubmit('edit')">
+      <div class="g2">
+        <div>
+          <label>任务名称</label>
+          <input name="name" id="e-sc-name" required>
+        </div>
+        <div>
+          <label>Chat ID</label>
+          <input name="chat_id" id="e-sc-chatid" required>
+        </div>
+      </div>
+      <div class="g2">
+        <div>
+          <label>任务模式</label>
+          <div class="mode-radio" style="margin-top:8px">
+            <label>
+              <input type="radio" name="once" value="0" id="e-sc-once-0"
+                onchange="toggleOnceMode(this,'edit')"> 周期执行
+            </label>
+            <label>
+              <input type="radio" name="once" value="1" id="e-sc-once-1"
+                onchange="toggleOnceMode(this,'edit')"> 一次性
+            </label>
+          </div>
+        </div>
+        <div>
+          <label>消息类型</label>
+          <select name="msg_type" id="e-sc-type" onchange="toggleScFields(this,'sc-edit')">
+            <option value="text">📝 文本</option>
+            <option value="photo">🖼 图片</option>
+            <option value="video">🎬 视频</option>
+            <option value="audio">🎵 音频</option>
+            <option value="document">📄 文件</option>
+            <option value="animation">🎞 动图 GIF</option>
+            <option value="voice">🎤 语音</option>
+            <option value="sticker">🎭 贴纸</option>
+            <option value="media_group">📸 相册</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 弹窗：周期 -->
+      <div id="e-cron-wrap">
+        <label>Cron 表达式</label>
+        <input name="cron" id="e-sc-cron" placeholder="0 9 * * *">
+        <p class="tip">分 时 日 月 周 — 例：0 9 * * * 每天9点</p>
+      </div>
+      <!-- 弹窗：一次性 -->
+      <div id="e-once-wrap" style="display:none">
+        <label>执行时间</label>
+        <input type="datetime-local" name="run_at" id="e-run-at">
+        <p class="tip">选择具体执行时间，触发一次后自动停用</p>
+      </div>
+
+      <!-- 消息内容 -->
+      <div id="sc-edit-text-row">
+        <label>推送文本</label>
+        <textarea name="msg_text" id="e-sc-text"></textarea>
+      </div>
+      <div id="sc-edit-file-row" style="display:none">
+        <label>file_id</label>
+        <input name="msg_file_id" id="e-sc-fid">
+      </div>
+      <div id="sc-edit-caption-row" style="display:none">
+        <label>说明文字</label>
+        <input name="msg_caption" id="e-sc-cap">
+      </div>
+      <div id="sc-edit-album-row" style="display:none">
+        <label>相册文件列表</label>
+        <div class="album-editor" id="sc-edit-album-editor"></div>
+        <button type="button" class="btn-add-item"
+          onclick="addAlbumItem('sc-edit-album-editor','sc-edit-album-json')">＋ 添加文件</button>
+        <input type="hidden" name="msg_file_id" id="sc-edit-album-json">
+      </div>
+
+      <button class="submit" type="submit">保存修改</button>
+    </form>
+  </div>
+</div>
+
+<script>
+// ======== 实时时钟 ========
+function updateClock(){
+  const now = new Date();
+  const el = document.getElementById('now-time');
+  if(el) el.textContent =
+    now.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'}) + ' ' +
+    now.toLocaleTimeString('zh-CN',{hour12:false});
+}
+setInterval(updateClock,1000); updateClock();
+
+function setCron(val){
+  const el = document.getElementById('cron-input');
+  if(el){ el.value=val; el.focus(); }
+}
+
+// ======== 表格搜索 ========
+function filterTable(inputId, tableId){
+  const q = document.getElementById(inputId).value.toLowerCase();
+  document.querySelectorAll('#'+tableId+' tr:not(:first-child)').forEach(tr=>{
+    tr.style.display = tr.innerText.toLowerCase().includes(q)?'':'none';
+  });
+}
+
+// ======== 定时任务：消息类型显隐 ========
+function toggleScFields(sel, prefix){
+  const t = sel.value;
+  const isText    = t==='text';
+  const isSticker = t==='sticker';
+  const isAlbum   = t==='media_group';
+  _show(prefix+'-text-row',    isText);
+  _show(prefix+'-file-row',    !isText && !isAlbum);
+  _show(prefix+'-caption-row', !isText && !isSticker && !isAlbum);
+  _show(prefix+'-album-row',   isAlbum);
+}
+function _show(id,show){
+  const el=document.getElementById(id);
+  if(el) el.style.display=show?'block':'none';
+}
+
+// ======== 定时任务：周期/一次性切换 ========
+function toggleOnceMode(radio, mode){
+  const isOnce = radio.value==='1';
+  if(mode==='add'){
+    _show('add-cron-wrap', !isOnce);
+    _show('add-once-wrap',  isOnce);
+    const ci=document.getElementById('cron-input');
+    if(ci) ci.required=!isOnce;
+  } else {
+    _show('e-cron-wrap', !isOnce);
+    _show('e-once-wrap',  isOnce);
+    const ci=document.getElementById('e-sc-cron');
+    if(ci) ci.required=!isOnce;
+  }
+}
+
+// ======== 定时任务：提交校验 ========
+function beforeScSubmit(mode){
+  const isOnce = mode==='add'
+    ? document.querySelector('input[name=once][value="1"]:checked')!==null
+    : document.getElementById('e-sc-once-1')?.checked;
+
+  if(!isOnce){
+    const cronId = mode==='add'?'cron-input':'e-sc-cron';
+    const val=(document.getElementById(cronId)?.value||'').trim();
+    const parts=val.split(/\s+/);
+    if(parts.length!==5){
+      alert(`❌ Cron 格式错误！\n\n当前：「${val||'(空)'}」\n字段数：${parts.length}（需要5个）\n\n示例：\n0 9 * * *     每天9点\n*/5 * * * *   每5分钟\n0 9 * * 1-5  工作日9点`);
+      return false;
+    }
+  }
+  // 打包定时任务相册
+  const edId = mode==='add'?'sc-add-album-editor':'sc-edit-album-editor';
+  const jId  = mode==='add'?'sc-add-album-json'  :'sc-edit-album-json';
+  packAlbum(edId,jId);
+  return true;
+}
+
+// ======== 相册编辑器（定时任务用） ========
+function addAlbumItem(editorId, jsonId, data){
+  const ed=document.getElementById(editorId);
+  if(!ed) return;
+  if(ed.children.length>=9){ alert('最多9个文件'); return; }
+  const idx=ed.children.length;
+  const div=document.createElement('div');
+  div.className='album-item';
+  div.innerHTML=`
+    <select class="al-type" style="margin-top:0">
+      <option value="photo"    ${data?.type==='photo'   ?'selected':''}>🖼 图片</option>
+      <option value="video"    ${data?.type==='video'   ?'selected':''}>🎬 视频</option>
+      <option value="document" ${data?.type==='document'?'selected':''}>📄 文件</option>
+      <option value="audio"    ${data?.type==='audio'   ?'selected':''}>🎵 音频</option>
+    </select>
+    <input class="al-fid" style="margin-top:0" placeholder="file_id" value="${data?.file_id||''}">
+    <input class="al-cap" style="margin-top:0"
+      placeholder="${idx===0?'说明文字（仅第一个有效）':'—'}"
+      value="${data?.caption||''}">
+    <button type="button" class="btn-rm" onclick="this.parentElement.remove()">移除</button>`;
+  ed.appendChild(div);
+}
+
+function packAlbum(editorId,jsonId){
+  const ed=document.getElementById(editorId);
+  const jel=document.getElementById(jsonId);
+  if(!ed||!jel) return;
+  const albumRow=ed.closest('[id$="-album-row"]');
+  if(albumRow&&albumRow.style.display==='none') return;
+  const items=[];
+  ed.querySelectorAll('.album-item').forEach(row=>{
+    const fid=row.querySelector('.al-fid').value.trim();
+    if(!fid) return;
+    items.push({
+      type:row.querySelector('.al-type').value,
+      file_id:fid,
+      caption:row.querySelector('.al-cap').value.trim()||null,
+    });
+  });
+  jel.value=JSON.stringify(items);
+}
+
+// ======== 关键词：多条回复编辑器 ========
+const REPLY_TYPES=[
+  ['text','📝 文本'],['photo','🖼 图片'],['video','🎬 视频'],
+  ['audio','🎵 音频'],['document','📄 文件'],['animation','🎞 动图GIF'],
+  ['voice','🎤 语音'],['sticker','🎭 贴纸'],['media_group','📸 相册'],
+];
+
+function addReplyItem(editorId, ns, data, idxOverride){
+  const ed=document.getElementById(editorId);
+  if(!ed) return;
+  const i = (idxOverride!==undefined)?idxOverride:ed.children.length;
+
+  const typeOpts=REPLY_TYPES.map(([v,l])=>
+    `<option value="${v}" ${(data?.reply_type||'text')===v?'selected':''}>${l}</option>`
+  ).join('');
+
+  const div=document.createElement('div');
+  div.className='reply-item';
+  const isText   =(data?.reply_type||'text')==='text';
+  const isSticker=(data?.reply_type)==='sticker';
+  const isAlbum  =(data?.reply_type)==='media_group';
+
+  div.innerHTML=`
+    <div class="reply-item-header">
+      <span class="reply-item-label">第 ${i+1} 条回复</span>
+      <button type="button" class="btn-rm"
+        onclick="this.closest('.reply-item').remove();renumberReplies('${editorId}')">移除</button>
+    </div>
+    <div class="reply-item-body">
+      <div>
+        <label style="margin-top:0">回复类型</label>
+        <select name="reply_type_${i}" class="ri-type" style="margin-top:4px"
+          onchange="toggleReplyFields(this,${i},'${ns}')">
+          ${typeOpts}
+        </select>
+      </div>
+      <div id="${ns}-rtext-${i}" style="display:${isText?'block':'none'}">
+        <label style="margin-top:0">回复文本</label>
+        <textarea name="reply_text_${i}" style="height:60px;margin-top:4px"
+          placeholder="输入回复文字...">${data?.reply_text||''}</textarea>
+      </div>
+      <div id="${ns}-rfile-${i}" style="display:${!isText&&!isAlbum?'block':'none'}">
+        <label style="margin-top:0">file_id</label>
+        <input name="reply_file_id_${i}" value="${data?.reply_file_id||''}"
+          placeholder="AgACAgIAAxk..." style="margin-top:4px">
+      </div>
+    </div>
+    <div id="${ns}-rcap-${i}" style="display:${!isText&&!isSticker&&!isAlbum?'block':'none'};margin-top:8px">
+      <label style="margin-top:0">说明文字（可选）</label>
+      <input name="reply_caption_${i}" value="${data?.reply_caption||''}"
+        placeholder="图片/视频附加说明" style="margin-top:4px">
+    </div>
+    <div id="${ns}-ralbum-${i}" style="display:${isAlbum?'block':'none'};margin-top:8px">
+      <label style="margin-top:0">相册文件列表（最多9个）</label>
+      <div class="album-editor" id="${ns}-ralbum-ed-${i}" style="margin-top:4px"></div>
+      <button type="button" class="btn-add-item" style="margin-top:6px"
+        onclick="addAlbumItemForReply('${ns}',${i})">＋ 添加文件</button>
+      <p class="album-hint">第一个文件的说明文字会作为相册标题</p>
+      <input type="hidden" name="reply_file_id_${i}" id="${ns}-ralbum-json-${i}">
+    </div>`;
+  ed.appendChild(div);
+
+  // 填充相册数据
+  if(isAlbum && data?.reply_file_id){
+    try{
+      JSON.parse(data.reply_file_id).forEach(item=>
+        addAlbumItemInEditor(`${ns}-ralbum-ed-${i}`, item)
+      );
+    }catch(e){}
+  }
+}
+
+function addAlbumItemInEditor(editorId, data){
+  const ed=document.getElementById(editorId);
+  if(!ed||ed.children.length>=9) return;
+  const idx=ed.children.length;
+  const div=document.createElement('div');
+  div.className='album-item';
+  div.innerHTML=`
+    <select class="al-type" style="margin-top:0">
+      <option value="photo"    ${data?.type==='photo'   ?'selected':''}>🖼 图片</option>
+      <option value="video"    ${data?.type==='video'   ?'selected':''}>🎬 视频</option>
+      <option value="document" ${data?.type==='document'?'selected':''}>📄 文件</option>
+      <option value="audio"    ${data?.type==='audio'   ?'selected':''}>🎵 音频</option>
+    </select>
+    <input class="al-fid" style="margin-top:0" placeholder="file_id" value="${data?.file_id||''}">
+    <input class="al-cap" style="margin-top:0"
+      placeholder="${idx===0?'说明文字（仅第一个有效）':'—'}"
+      value="${data?.caption||''}">
+    <button type="button" class="btn-rm" onclick="this.parentElement.remove()">移除</button>`;
+  ed.appendChild(div);
+}
+
+function addAlbumItemForReply(ns, i){
+  addAlbumItemInEditor(`${ns}-ralbum-ed-${i}`, null);
+}
+
+function toggleReplyFields(sel, i, ns){
+  const t=sel.value;
+  const isText   =t==='text';
+  const isSticker=t==='sticker';
+  const isAlbum  =t==='media_group';
+  _show(`${ns}-rtext-${i}`,  isText);
+  _show(`${ns}-rfile-${i}`,  !isText&&!isAlbum);
+  _show(`${ns}-rcap-${i}`,   !isText&&!isSticker&&!isAlbum);
+  _show(`${ns}-ralbum-${i}`, isAlbum);
+}
+
+function renumberReplies(editorId){
+  const ed=document.getElementById(editorId);
+  if(!ed) return;
+  ed.querySelectorAll('.reply-item-label').forEach((sp,i)=>{
+    sp.textContent=`第 ${i+1} 条回复`;
+  });
+}
+
+function packAllAlbums(ns){
+  // 打包所有相册类型的回复项
+  const ed=document.getElementById(`${ns}-replies-editor`);
+  if(!ed) return;
+  let i=0;
+  ed.querySelectorAll('.reply-item').forEach(()=>{
+    const albumEd  =document.getElementById(`${ns}-ralbum-ed-${i}`);
+    const albumJson=document.getElementById(`${ns}-ralbum-json-${i}`);
+    if(albumEd&&albumJson){
+      const items=[];
+      albumEd.querySelectorAll('.album-item').forEach(row=>{
+        const fid=row.querySelector('.al-fid').value.trim();
+        if(!fid) return;
+        items.push({
+          type:row.querySelector('.al-type').value,
+          file_id:fid,
+          caption:row.querySelector('.al-cap').value.trim()||null,
+        });
+      });
+      albumJson.value=JSON.stringify(items);
+    }
+    i++;
+  });
+}
+
+// ======== 弹窗：关键词编辑 ========
+function openKwEdit(id){
+  fetch('/kw/get/'+id).then(r=>r.json()).then(d=>{
+    document.getElementById('kw-edit-form').action='/kw/edit/'+id;
+    document.getElementById('e-kw-pattern').value=d.pattern||'';
+    document.getElementById('e-kw-match').value  =d.match||'contains';
+
+    // 触发模式
+    const isAll=d.mode==='all';
+    document.getElementById('e-kw-mode-rnd').checked=!isAll;
+    document.getElementById('e-kw-mode-all').checked= isAll;
+
+    // 填充多条回复
+    const ed=document.getElementById('edit-kw-replies-editor');
+    if(ed){
+      ed.innerHTML='';
+      const replies=d.replies||[];
+      if(replies.length===0){
+        addReplyItem('edit-kw-replies-editor','edit-kw',null,0);
+      } else {
+        replies.forEach((r,i)=>addReplyItem('edit-kw-replies-editor','edit-kw',r,i));
+      }
+    }
+    document.getElementById('kw-modal').classList.add('show');
+  }).catch(()=>alert('获取数据失败，请刷新页面重试'));
+}
+
+// ======== 弹窗：定时任务编辑 ========
+function openScEdit(id){
+  fetch('/sc/get/'+id).then(r=>r.json()).then(d=>{
+    document.getElementById('sc-edit-form').action='/sc/edit/'+id;
+    document.getElementById('e-sc-name').value   =d.name||'';
+    document.getElementById('e-sc-chatid').value =d.chat_id||'';
+
+    const isOnce=!!d.once;
+    document.getElementById('e-sc-once-0').checked=!isOnce;
+    document.getElementById('e-sc-once-1').checked= isOnce;
+    _show('e-cron-wrap', !isOnce);
+    _show('e-once-wrap',  isOnce);
+
+    if(isOnce){
+      const dt=(d.cron||'').replace(' ','T').substring(0,16);
+      const el=document.getElementById('e-run-at');
+      if(el) el.value=dt;
+    } else {
+      const el=document.getElementById('e-sc-cron');
+      if(el){ el.value=d.cron||''; el.required=true; }
+    }
+
+    const typeEl=document.getElementById('e-sc-type');
+    typeEl.value=d.msg_type||'text';
+    toggleScFields(typeEl,'sc-edit');
+
+    document.getElementById('e-sc-text').value=d.msg_text||'';
+    document.getElementById('e-sc-cap').value =d.msg_caption||'';
+
+    if(d.msg_type==='media_group'){
+      const albumEd=document.getElementById('sc-edit-album-editor');
+      albumEd.innerHTML='';
+      try{
+        JSON.parse(d.msg_file_id||'[]').forEach(item=>addAlbumItem('sc-edit-album-editor','sc-edit-album-json',item));
+      }catch(e){}
+    } else {
+      document.getElementById('e-sc-fid').value=d.msg_file_id||'';
+    }
+    document.getElementById('sc-modal').classList.add('show');
+  }).catch(()=>alert('获取数据失败，请刷新页面重试'));
+}
+
+// ======== 弹窗关闭 ========
+function closeModal(id){
+  document.getElementById(id).classList.remove('show');
+}
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('show');});
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    document.querySelectorAll('.modal-overlay.show').forEach(m=>m.classList.remove('show'));
+  }
+});
+
+// ======== 初始化：添加表单默认一条回复 ========
+document.addEventListener('DOMContentLoaded',()=>{
+  addReplyItem('add-kw-replies-editor','add-kw',null,0);
+});
+</script>
+</body>
+</html>
 
