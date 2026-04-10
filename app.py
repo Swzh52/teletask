@@ -5,17 +5,13 @@ import os
 
 flask_app = Flask(__name__)
 flask_app.secret_key = os.getenv("SECRET_KEY", "change-this-default-secret")
-
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-
 
 def _auth_token():
     return hashlib.sha256(f"teletask:{ADMIN_PASSWORD}".encode()).hexdigest()
 
-
 def check_auth():
     return request.cookies.get("auth") == _auth_token()
-
 
 @flask_app.before_request
 def require_login():
@@ -25,11 +21,9 @@ def require_login():
     if not check_auth():
         return redirect("/login")
 
-
 @flask_app.route("/login")
 def login():
     return render_template("login.html", err=request.args.get("err"))
-
 
 @flask_app.route("/do_login", methods=["POST"])
 def do_login():
@@ -38,7 +32,6 @@ def do_login():
         resp.set_cookie("auth", _auth_token(), max_age=86400 * 7, httponly=True)
         return resp
     return redirect("/login?err=1")
-
 
 @flask_app.route("/")
 def index():
@@ -50,7 +43,6 @@ def index():
         ban_rules = db.get_auto_ban_rules(),
     )
 
-
 # ======== 关键词 CRUD ========
 @flask_app.route("/kw/add", methods=["POST"])
 def kw_add():
@@ -60,10 +52,10 @@ def kw_add():
     replies = _parse_replies(request.form)
     das     = _parse_seconds(request.form, "kw_delete")
     eas     = _parse_seconds(request.form, "kw_expire")
+    start   = _parse_datetime(request.form, "kw_start")
     if pattern and replies:
-        db.add_keyword(pattern, match, mode, replies, das, eas)
+        db.add_keyword(pattern, match, mode, replies, das, eas, start)
     return redirect("/")
-
 
 @flask_app.route("/kw/edit/<int:kid>", methods=["POST"])
 def kw_edit(kid):
@@ -73,28 +65,86 @@ def kw_edit(kid):
     replies = _parse_replies(request.form)
     das     = _parse_seconds(request.form, "kw_delete")
     eas     = _parse_seconds(request.form, "kw_expire")
+    start   = _parse_datetime(request.form, "kw_start")
     if pattern:
-        db.update_keyword(kid, pattern, match, mode, replies, das, eas)
+        db.update_keyword(kid, pattern, match, mode, replies, das, eas, start)
     return redirect("/")
-
 
 @flask_app.route("/kw/get/<int:kid>")
 def kw_get(kid):
     row = db.get_keyword(kid)
     return jsonify(row if row else {})
 
-
 @flask_app.route("/kw/delete/<int:kid>")
 def kw_delete(kid):
     db.delete_keyword(kid)
     return redirect("/")
-
 
 @flask_app.route("/kw/toggle/<int:kid>")
 def kw_toggle(kid):
     db.toggle_keyword(kid)
     return redirect("/")
 
+# ======== 关键词批量操作 ========
+@flask_app.route("/kw/bulk", methods=["POST"])
+def kw_bulk():
+    action = request.form.get("action", "")
+    ids    = [int(x) for x in request.form.getlist("ids") if x.isdigit()]
+    if not ids:
+        return redirect("/")
+    if action == "enable":
+        db.bulk_toggle_keywords(ids, 1)
+    elif action == "disable":
+        db.bulk_toggle_keywords(ids, 0)
+    elif action == "delete":
+        db.bulk_delete_keywords(ids)
+    return redirect("/")
+
+# ======== 定时任务 CRUD ========
+@flask_app.route("/sc/add", methods=["POST"])
+def sc_add():
+    db.add_schedule(**_sc_form(request.form))
+    _reload()
+    return redirect("/")
+
+@flask_app.route("/sc/edit/<int:sid>", methods=["POST"])
+def sc_edit(sid):
+    db.update_schedule(sid, **_sc_form(request.form))
+    _reload()
+    return redirect("/")
+
+@flask_app.route("/sc/get/<int:sid>")
+def sc_get(sid):
+    row = db.get_schedule(sid)
+    return jsonify(row if row else {})
+
+@flask_app.route("/sc/delete/<int:sid>")
+def sc_delete(sid):
+    db.delete_schedule(sid)
+    _reload()
+    return redirect("/")
+
+@flask_app.route("/sc/toggle/<int:sid>")
+def sc_toggle(sid):
+    db.toggle_schedule(sid)
+    _reload()
+    return redirect("/")
+
+# ======== 定时任务批量操作 ========
+@flask_app.route("/sc/bulk", methods=["POST"])
+def sc_bulk():
+    action = request.form.get("action", "")
+    ids    = [int(x) for x in request.form.getlist("ids") if x.isdigit()]
+    if not ids:
+        return redirect("/")
+    if action == "enable":
+        db.bulk_toggle_schedules(ids, 1)
+    elif action == "disable":
+        db.bulk_toggle_schedules(ids, 0)
+    elif action == "delete":
+        db.bulk_delete_schedules(ids)
+    _reload()
+    return redirect("/")
 
 def _parse_replies(f):
     replies = []
@@ -112,57 +162,31 @@ def _parse_replies(f):
         i += 1
     return replies
 
-
 def _parse_seconds(f, prefix):
-    """
-    将「数量+单位」表单字段转换为秒数。
-    特殊值：val == -1 → 返回 -1（表示"清除到期时间"信号）
-    val == 0 或无效 → 返回 None（不设置）
-    """
     try:
         val  = int(f.get(f"{prefix}_value", 0) or 0)
         unit = int(f.get(f"{prefix}_unit",  1) or 1)
         if val == -1:
-            return -1          # ✅ 传递"清除"信号给 database.update_keyword
+            return -1
         return val * unit if val > 0 else None
     except (ValueError, TypeError):
         return None
 
-
-# ======== 定时任务 CRUD ========
-@flask_app.route("/sc/add", methods=["POST"])
-def sc_add():
-    db.add_schedule(**_sc_form(request.form))
-    _reload()
-    return redirect("/")
-
-
-@flask_app.route("/sc/edit/<int:sid>", methods=["POST"])
-def sc_edit(sid):
-    db.update_schedule(sid, **_sc_form(request.form))
-    _reload()
-    return redirect("/")
-
-
-@flask_app.route("/sc/get/<int:sid>")
-def sc_get(sid):
-    row = db.get_schedule(sid)
-    return jsonify(row if row else {})
-
-
-@flask_app.route("/sc/delete/<int:sid>")
-def sc_delete(sid):
-    db.delete_schedule(sid)
-    _reload()
-    return redirect("/")
-
-
-@flask_app.route("/sc/toggle/<int:sid>")
-def sc_toggle(sid):
-    db.toggle_schedule(sid)
-    _reload()
-    return redirect("/")
-
+def _parse_datetime(f, prefix):
+    """解析 datetime-local 输入，返回 'YYYY-MM-DD HH:MM:SS' 或 None"""
+    val = f.get(f"{prefix}_at", "").strip()
+    if not val:
+        return None
+    # datetime-local 格式为 "2026-04-10T09:00" 或 "2026-04-10T09:00:00"
+    try:
+        from datetime import datetime as dt
+        val = val.replace("T", " ")
+        if len(val) == 16:
+            val += ":00"
+        dt.strptime(val, "%Y-%m-%d %H:%M:%S")  # 验证格式
+        return val
+    except ValueError:
+        return None
 
 def _sc_form(f):
     once = f.get("once", "0") == "1"
@@ -171,7 +195,8 @@ def _sc_form(f):
         cron = (dt + ":00") if len(dt) == 16 else dt
     else:
         cron = f.get("cron", "").strip()
-    das = _parse_seconds(f, "sc_delete")
+    das   = _parse_seconds(f, "sc_delete")
+    start = _parse_datetime(f, "sc_start")
     return dict(
         name                 = f.get("name",        "").strip(),
         chat_id              = f.get("chat_id",     "").strip(),
@@ -182,16 +207,14 @@ def _sc_form(f):
         msg_caption          = f.get("msg_caption", "").strip() or None,
         once                 = once,
         delete_after_seconds = das,
+        start_at             = start,
     )
-
 
 def _reload():
     try:
-        import bot
-        bot.reload_schedules()
+        import bot; bot.reload_schedules()
     except Exception:
         pass
-
 
 # ======== 统计页面 ========
 @flask_app.route("/stats")
@@ -206,7 +229,6 @@ def stats_page():
         stats   = db.get_stats(),
     )
 
-
 @flask_app.route("/do_stats_login", methods=["POST"])
 def do_stats_login():
     if request.form.get("pwd") == ADMIN_PASSWORD:
@@ -214,12 +236,10 @@ def do_stats_login():
         return redirect("/stats")
     return render_template("stats_login.html", err=True)
 
-
 @flask_app.route("/stats/logout")
 def stats_logout():
     session.pop("stats_auth", None)
     return redirect("/stats")
-
 
 @flask_app.route("/stats/ban/<int:uid>", methods=["POST"])
 def stats_ban(uid):
@@ -231,14 +251,12 @@ def stats_ban(uid):
                 request.form.get("reason",     ""))
     return redirect("/stats")
 
-
 @flask_app.route("/stats/unban/<int:uid>")
 def stats_unban(uid):
     if not session.get("stats_auth"):
         return redirect("/stats")
     db.unban_user(uid)
     return redirect("/stats")
-
 
 # ======== 自动Ban规则 ========
 @flask_app.route("/ban_rules/add", methods=["POST"])
@@ -252,18 +270,15 @@ def ban_rules_add():
         pass
     return redirect("/")
 
-
 @flask_app.route("/ban_rules/delete/<int:rid>")
 def ban_rules_delete(rid):
     db.delete_auto_ban_rule(rid)
     return redirect("/")
 
-
 @flask_app.route("/ban_rules/toggle/<int:rid>")
 def ban_rules_toggle(rid):
     db.toggle_auto_ban_rule(rid)
     return redirect("/")
-
 
 # ======== 文件库 ========
 @flask_app.route("/files")
@@ -272,7 +287,6 @@ def files_page():
         return render_template("files_login.html", err=False)
     return render_template("files.html", records=db.get_file_records())
 
-
 @flask_app.route("/do_files_login", methods=["POST"])
 def do_files_login():
     if request.form.get("pwd") == ADMIN_PASSWORD:
@@ -280,12 +294,10 @@ def do_files_login():
         return redirect("/files")
     return render_template("files_login.html", err=True)
 
-
 @flask_app.route("/files/logout")
 def files_logout():
     session.pop("files_auth", None)
     return redirect("/files")
-
 
 @flask_app.route("/files/rename/<int:fid>", methods=["POST"])
 def files_rename(fid):
@@ -296,14 +308,12 @@ def files_rename(fid):
         db.update_file_name(fid, new_name)
     return redirect("/files")
 
-
 @flask_app.route("/files/delete/<int:fid>")
 def files_delete(fid):
     if not session.get("files_auth"):
         return redirect("/files")
     db.soft_delete_file(fid)
     return redirect("/files")
-
 
 @flask_app.route("/files/check_usages/<int:fid>")
 def files_check_usages(fid):
@@ -315,7 +325,6 @@ def files_check_usages(fid):
         return jsonify({"usages": [], "file_name": ""})
     usages = db.get_file_ids_in_use(target["file_id"])
     return jsonify({"usages": usages, "file_name": target["file_name"] or ""})
-
 
 @flask_app.route("/debug/routes")
 def debug_routes():
