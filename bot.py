@@ -1,4 +1,4 @@
-import re, logging, os, asyncio
+import re, logging, os, asyncio, html as html_module
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -33,22 +33,26 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
+def _clean(s):
+    """统一清理文本：<br> → 换行，字面量 \\n → 换行"""
+    if not s:
+        return s
+    s = s.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    s = s.replace("\\n", "\n")
+    return s
+
+
 # ======== 发送单条消息 ========
 async def send_single(bot, chat_id, msg_type, text=None,
                       file_id=None, caption=None, reply_to=None):
+    text    = _clean(text)
+    caption = _clean(caption)
+
     kw = {"chat_id": chat_id}
     if reply_to:
         kw["reply_to_message_id"] = reply_to
     t  = msg_type.lower()
     pm = "HTML"
-
-    if caption:
-        caption = caption.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-        caption = caption.replace("\\n", "\n")  # ✅ 加这行：字面量 \n → 真换行
-    if text:
-        text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-        text = text.replace("\\n", "\n")  # ✅ 加这行
-
     try:
         if t == "text":
             return await bot.send_message(text=text or "", parse_mode=pm, **kw)
@@ -142,16 +146,16 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not hit:
             continue
 
-        # 5秒冷却
-        if not bh.check_kw_cooldown(kw["id"]):
-            log.debug(f"关键词 #{kw['id']} 冷却中，跳过")
+        # Bug 2 修复：continue 而非 return，冷却只跳过当前关键词
+        # Bug 8 修复：key 加入 chat_id，不同群组冷却互不影响
+        if not bh.check_kw_cooldown(kw["id"], chat.id):
+            log.debug(f"关键词 #{kw['id']} 在 chat {chat.id} 冷却中，跳过")
             continue
 
         replies = kw.get("replies", [])
         if not replies:
             continue
 
-        # 记录触发日志
         db.log_keyword_trigger(
             user_id        = user_id,
             username       = user.username if user else "",
@@ -180,7 +184,8 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             await ctx.bot.send_message(
                                 chat_id=admin_id,
                                 text=(f"🚫 <b>自动封禁通知</b>\n\n"
-                                      f"用户：{user.first_name} (<code>{user_id}</code>)\n"
+                                      f"用户：{html_module.escape(user.first_name or '')} "
+                                      f"(<code>{user_id}</code>)\n"
                                       f"原因：{rule['window_seconds']}秒内触发 {count} 次"),
                                 parse_mode="HTML"
                             )
@@ -188,7 +193,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             pass
                     return
 
-        # 发送回复
         mode         = kw.get("mode", "random")
         delete_after = kw.get("delete_after_seconds")
 
@@ -301,8 +305,10 @@ async def welcome_new_member(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if result.old_chat_member.status in ("member", "administrator", "creator"):
         return
-    new_user = result.new_chat_member.user
-    mention  = f'<a href="tg://user?id={new_user.id}">{new_user.first_name}</a>'
+    new_user  = result.new_chat_member.user
+    # Bug 6 修复：转义用户名防止 HTML 注入
+    safe_name = html_module.escape(new_user.first_name or "")
+    mention   = f'<a href="tg://user?id={new_user.id}">{safe_name}</a>'
     await ctx.bot.send_message(
         chat_id=result.chat.id,
         text=f"👋 欢迎 {mention} 加入！",
@@ -320,7 +326,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sc_count  = len(db.get_schedules())
     await update.message.reply_text(
         f"🤖 <b>Bot 管理助手</b>\n\n"
-        f"👤 管理员：{user.first_name}\n"
+        f"👤 管理员：{html_module.escape(user.first_name or '')}\n"
         f"📋 关键词规则：{kw_count} 条\n"
         f"⏰ 定时任务：{sc_count} 条\n\n"
         f"直接发送媒体文件即可获取 file_id。",
@@ -338,7 +344,7 @@ async def cmd_keywords(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines = []
     for kw in kws:
         status = "✅" if kw["active"] else "❌"
-        lines.append(f"{status} <code>{kw['pattern']}</code> [{kw['match']}]")
+        lines.append(f"{status} <code>{html_module.escape(kw['pattern'])}</code> [{kw['match']}]")
     await update.message.reply_text(
         f"📋 <b>关键词列表（共{len(kws)}条）</b>\n\n" + "\n".join(lines),
         parse_mode="HTML"
@@ -354,7 +360,7 @@ async def cmd_task_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for s in schedules:
         status = "✅运行中" if s["active"] else "⏸已停用"
         once   = " 🔂一次性" if s["once"] else ""
-        lines.append(f"{status}{once}  <b>{s['name'] or '未命名'}</b>\n"
+        lines.append(f"{status}{once}  <b>{html_module.escape(s['name'] or '未命名')}</b>\n"
                      f"   {s['cron']}  →  <code>{s['chat_id']}</code>")
     lines.append("\n📜 <b>最近执行记录</b>\n")
     for lg in logs:
@@ -398,7 +404,6 @@ def make_job(sid, name, chat_id, msg_type, msg_text, msg_file_id, msg_caption,
 def reload_schedules():
     scheduler.remove_all_jobs()
 
-    # 每分钟检查关键词是否到期
     scheduler.add_job(
         check_expired_keywords,
         IntervalTrigger(minutes=1),
@@ -407,9 +412,6 @@ def reload_schedules():
     )
 
     for s in db.get_schedules():
-        # ⚠️ 关键修复：sqlite3.Row 不支持 .get()，统一转成 dict
-        s = dict(s)
-
         if not s["active"]:
             log.info(f"跳过已停用任务 #{s['id']} [{s['name']}]")
             continue
@@ -419,8 +421,7 @@ def reload_schedules():
 
         try:
             if once:
-                # ⚠️ 关键修复：app.py 存入格式可能是 "2026-04-10 09:00:00"（含空格）
-                # 或 "2026-04-10T09:00:00"，统一替换空格为 T 后解析
+                # Bug 4 修复：兼容空格和 T 分隔的日期时间字符串
                 cron_iso = cron.replace(" ", "T")
                 run_dt   = datetime.fromisoformat(cron_iso)
                 trigger  = DateTrigger(run_date=run_dt, timezone="Asia/Shanghai")
@@ -428,10 +429,7 @@ def reload_schedules():
             else:
                 parts = cron.split()
                 if len(parts) != 5:
-                    log.warning(
-                        f"⚠️ cron格式错误 #{s['id']} [{s['name']}]: "
-                        f"'{cron}' 需要5个字段，当前{len(parts)}个"
-                    )
+                    log.warning(f"⚠️ cron格式错误 #{s['id']}: '{cron}' 需要5段，当前{len(parts)}段")
                     continue
                 mi, hr, dm, mo, dw = parts
                 trigger = CronTrigger(
@@ -442,18 +440,14 @@ def reload_schedules():
             scheduler.add_job(
                 make_job(
                     s["id"], s["name"], s["chat_id"],
-                    s["msg_type"],
-                    s["msg_text"],        # sqlite3.Row 用 [] 取值，已转 dict 安全
-                    s["msg_file_id"],
-                    s["msg_caption"],
-                    once,
-                    s.get("delete_after_seconds"),  # dict 支持 .get()
+                    s["msg_type"], s["msg_text"], s["msg_file_id"], s["msg_caption"],
+                    once, s.get("delete_after_seconds")
                 ),
                 trigger,
                 id=f"sched_{s['id']}",
                 replace_existing=True,
             )
-            log.info(f"✅ 定时任务已加载 #{s['id']} [{s['name']}] once={once} cron={cron}")
+            log.info(f"✅ 定时任务已加载 #{s['id']} [{s['name']}] once={once}")
         except Exception as e:
             log.error(f"❌ 定时任务加载失败 #{s['id']} [{s['name']}]: {e}")
 
@@ -469,7 +463,7 @@ async def check_expired_keywords():
                 await bot_app.bot.send_message(
                     chat_id=admin_id,
                     text=(f"⏱ <b>关键词已到期</b>\n\n"
-                          f"关键词 <code>{kw['pattern']}</code> 已自动停用。\n"
+                          f"关键词 <code>{html_module.escape(kw['pattern'])}</code> 已自动停用。\n"
                           f"统计记录已保留，如需重启请前往管理后台。"),
                     parse_mode="HTML"
                 )
