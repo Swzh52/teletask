@@ -388,7 +388,7 @@ def soft_delete_file(fid):
     conn.commit(); conn.close()
     return file_id
 
-def get_file_id_usages(file_id):
+def get_file_ids_in_use(file_id):
     """返回使用该 file_id 的关键词和定时任务列表"""
     conn = get_conn()
     usages = []
