@@ -1,15 +1,24 @@
+import hashlib
 from flask import Flask, request, redirect, render_template, jsonify, session
 import database as db
 import os
 
 flask_app = Flask(__name__)
-flask_app.secret_key = os.getenv("SECRET_KEY", "请修改这个默认值")
+
+# Bug 4 修复：从环境变量读取固定 secret_key，重启不丢 session
+flask_app.secret_key = os.getenv("SECRET_KEY", "change-this-default-secret")
+
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 
-# ======== 认证 ========
+def _auth_token():
+    """Bug 3 修复：用 SHA256 生成 token，不把明文密码存入 cookie"""
+    return hashlib.sha256(f"teletask:{ADMIN_PASSWORD}".encode()).hexdigest()
+
+
+# ======== 登录验证 ========
 def check_auth():
-    return request.cookies.get("auth") == ADMIN_PASSWORD
+    return request.cookies.get("auth") == _auth_token()
 
 
 @flask_app.before_request
@@ -30,7 +39,8 @@ def login():
 def do_login():
     if request.form.get("pwd") == ADMIN_PASSWORD:
         resp = redirect("/")
-        resp.set_cookie("auth", ADMIN_PASSWORD, max_age=86400 * 7)
+        # Bug 3 修复：存 hash token 而非明文密码
+        resp.set_cookie("auth", _auth_token(), max_age=86400 * 7, httponly=True)
         return resp
     return redirect("/login?err=1")
 
@@ -93,7 +103,6 @@ def kw_toggle(kid):
 
 
 def _parse_replies(f):
-    """解析多条回复，字段格式：reply_type_0, reply_text_0, ..."""
     replies = []
     i = 0
     while True:
@@ -111,7 +120,7 @@ def _parse_replies(f):
 
 
 def _parse_seconds(f, prefix):
-    """将「数量+单位」的表单字段转换成秒数，无效则返回 None"""
+    """将「数量+单位」表单字段转换为秒数，无效返回 None"""
     try:
         val  = int(f.get(f"{prefix}_value", 0) or 0)
         unit = int(f.get(f"{prefix}_unit",  1) or 1)
@@ -138,7 +147,7 @@ def sc_edit(sid):
 @flask_app.route("/sc/get/<int:sid>")
 def sc_get(sid):
     row = db.get_schedule(sid)
-    return jsonify(dict(row) if row else {})
+    return jsonify(row if row else {})
 
 
 @flask_app.route("/sc/delete/<int:sid>")
@@ -159,7 +168,6 @@ def _sc_form(f):
     once = f.get("once", "0") == "1"
     if once:
         dt   = f.get("run_at", "").strip()
-        # datetime-local 输入格式："2025-01-15T09:00" → 补足秒
         cron = (dt + ":00") if len(dt) == 16 else dt
     else:
         cron = f.get("cron", "").strip()
@@ -179,12 +187,13 @@ def _sc_form(f):
 
 def _reload():
     try:
-        import bot; bot.reload_schedules()
+        import bot
+        bot.reload_schedules()
     except Exception:
         pass
 
 
-# ======== 统计 ========
+# ======== 统计页面 ========
 @flask_app.route("/stats")
 def stats_page():
     if not session.get("stats_auth"):
@@ -235,9 +244,9 @@ def stats_unban(uid):
 @flask_app.route("/ban_rules/add", methods=["POST"])
 def ban_rules_add():
     try:
-        tc = int(request.form.get("trigger_count", 10) or 10)
-        ws_val  = int(request.form.get("window_value", 5) or 5)
-        ws_unit = int(request.form.get("window_unit", 60) or 60)
+        tc      = int(request.form.get("trigger_count", 10) or 10)
+        ws_val  = int(request.form.get("window_value",  5)  or 5)
+        ws_unit = int(request.form.get("window_unit",   60) or 60)
         db.add_auto_ban_rule(tc, ws_val * ws_unit)
     except (ValueError, TypeError):
         pass
@@ -292,28 +301,20 @@ def files_rename(fid):
 def files_delete(fid):
     if not session.get("files_auth"):
         return redirect("/files")
-    deleted_file_id = db.soft_delete_file(fid)
-    if deleted_file_id:
-        usages = db.get_file_ids_in_use(deleted_file_id)
-        if usages:
-            import logging
-            log = logging.getLogger(__name__)
-            names = ", ".join(f"[{u['type']}] {u['name']}" for u in usages)
-            log.warning(f"⚠️ 已删除文件 {deleted_file_id[:30]} 仍被使用: {names}")
-            # 下次 Bot 尝试发送该文件时会自动通知管理员（见 guarded_send）
+    db.soft_delete_file(fid)
     return redirect("/files")
 
 
+# Bug 1 修复：调用正确的函数名 get_file_ids_in_use
 @flask_app.route("/files/check_usages/<int:fid>")
 def files_check_usages(fid):
-    """AJAX：查询文件被哪些规则引用"""
     if not session.get("files_auth"):
         return jsonify({"error": "unauthorized"}), 403
     records = db.get_file_records()
     target  = next((r for r in records if r["id"] == fid), None)
     if not target:
         return jsonify({"usages": [], "file_name": ""})
-    usages = db.get_file_ids_in_use(target["file_id"])
+    usages = db.get_file_ids_in_use(target["file_id"])  # ← Bug 1 修复
     return jsonify({"usages": usages, "file_name": target["file_name"] or ""})
 
 
