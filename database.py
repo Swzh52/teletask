@@ -19,9 +19,9 @@ def init_db():
             active               INTEGER NOT NULL DEFAULT 1,
             delete_after_seconds INTEGER DEFAULT NULL,
             expire_after_seconds INTEGER DEFAULT NULL,
-            expire_at            DATETIME DEFAULT NULL
+            expire_at            DATETIME DEFAULT NULL,
+            start_at             DATETIME DEFAULT NULL
         );
-
         CREATE TABLE IF NOT EXISTS keyword_replies (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             keyword_id    INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
@@ -31,7 +31,6 @@ def init_db():
             reply_caption TEXT,
             sort_order    INTEGER NOT NULL DEFAULT 0
         );
-
         CREATE TABLE IF NOT EXISTS schedules (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             name                 TEXT    NOT NULL DEFAULT '',
@@ -43,9 +42,9 @@ def init_db():
             msg_caption          TEXT,
             once                 INTEGER NOT NULL DEFAULT 0,
             active               INTEGER NOT NULL DEFAULT 1,
-            delete_after_seconds INTEGER DEFAULT NULL
+            delete_after_seconds INTEGER DEFAULT NULL,
+            start_at             DATETIME DEFAULT NULL
         );
-
         CREATE TABLE IF NOT EXISTS schedule_logs (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             schedule_id   INTEGER NOT NULL,
@@ -55,7 +54,6 @@ def init_db():
             finished_at   DATETIME,
             error         TEXT
         );
-
         CREATE TABLE IF NOT EXISTS file_records (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             file_id           TEXT    NOT NULL,
@@ -73,7 +71,6 @@ def init_db():
             deleted_at        DATETIME DEFAULT NULL,
             created_at        DATETIME DEFAULT (datetime('now','localtime'))
         );
-
         CREATE TABLE IF NOT EXISTS keyword_logs (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id         INTEGER NOT NULL,
@@ -86,7 +83,6 @@ def init_db():
             keyword_pattern TEXT,
             triggered_at    DATETIME DEFAULT (datetime('now','localtime'))
         );
-
         CREATE TABLE IF NOT EXISTS banned_users (
             user_id    INTEGER PRIMARY KEY,
             username   TEXT,
@@ -94,7 +90,6 @@ def init_db():
             banned_at  DATETIME DEFAULT (datetime('now','localtime')),
             reason     TEXT
         );
-
         CREATE TABLE IF NOT EXISTS auto_ban_rules (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             trigger_count  INTEGER NOT NULL DEFAULT 10,
@@ -110,10 +105,12 @@ def _migrate(conn):
         ("schedules",    "name",                 "TEXT NOT NULL DEFAULT ''"),
         ("schedules",    "once",                 "INTEGER NOT NULL DEFAULT 0"),
         ("schedules",    "delete_after_seconds", "INTEGER DEFAULT NULL"),
+        ("schedules",    "start_at",             "DATETIME DEFAULT NULL"),
         ("keywords",     "mode",                 "TEXT NOT NULL DEFAULT 'random'"),
         ("keywords",     "delete_after_seconds", "INTEGER DEFAULT NULL"),
         ("keywords",     "expire_after_seconds", "INTEGER DEFAULT NULL"),
         ("keywords",     "expire_at",            "DATETIME DEFAULT NULL"),
+        ("keywords",     "start_at",             "DATETIME DEFAULT NULL"),
         ("file_records", "uploader_id",          "INTEGER"),
         ("file_records", "uploader_name",        "TEXT"),
         ("file_records", "uploader_username",    "TEXT"),
@@ -126,8 +123,7 @@ def _migrate(conn):
             conn.commit()
         except Exception:
             pass
-
-    # 旧 keywords 回复字段迁移到子表
+    # 旧回复字段迁移
     try:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(keywords)").fetchall()]
         if "reply_type" in cols:
@@ -186,7 +182,7 @@ def get_keyword(kid):
         conn.close()
 
 def add_keyword(pattern, match, mode, replies,
-                delete_after_seconds=None, expire_after_seconds=None):
+                delete_after_seconds=None, expire_after_seconds=None, start_at=None):
     conn = get_conn()
     try:
         expire_at = None
@@ -195,8 +191,8 @@ def add_keyword(pattern, match, mode, replies,
                          ).strftime("%Y-%m-%d %H:%M:%S")
         cur = conn.execute(
             "INSERT INTO keywords(pattern,match,mode,delete_after_seconds,"
-            "expire_after_seconds,expire_at) VALUES(?,?,?,?,?,?)",
-            (pattern, match, mode, delete_after_seconds, expire_after_seconds, expire_at)
+            "expire_after_seconds,expire_at,start_at) VALUES(?,?,?,?,?,?,?)",
+            (pattern, match, mode, delete_after_seconds, expire_after_seconds, expire_at, start_at)
         )
         kid = cur.lastrowid
         for i, r in enumerate(replies):
@@ -211,37 +207,29 @@ def add_keyword(pattern, match, mode, replies,
         conn.close()
 
 def update_keyword(kid, pattern, match, mode, replies,
-                   delete_after_seconds=None, expire_after_seconds=None):
-    """
-    Bug 7 修复：expire_after_seconds=None 时保留原有到期时间，不重置为 NULL。
-    若需清除到期时间，传入 expire_after_seconds=-1。
-    """
+                   delete_after_seconds=None, expire_after_seconds=None, start_at=None):
     conn = get_conn()
     try:
         if expire_after_seconds == -1:
-            # 显式清除到期时间
             conn.execute(
                 "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
-                "expire_after_seconds=NULL,expire_at=NULL WHERE id=?",
-                (pattern, match, mode, delete_after_seconds, kid)
+                "expire_after_seconds=NULL,expire_at=NULL,start_at=? WHERE id=?",
+                (pattern, match, mode, delete_after_seconds, start_at, kid)
             )
         elif expire_after_seconds:
-            # 重新设置到期时间
             expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
                          ).strftime("%Y-%m-%d %H:%M:%S")
             conn.execute(
                 "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
-                "expire_after_seconds=?,expire_at=? WHERE id=?",
+                "expire_after_seconds=?,expire_at=?,start_at=? WHERE id=?",
                 (pattern, match, mode, delete_after_seconds,
-                 expire_after_seconds, expire_at, kid)
+                 expire_after_seconds, expire_at, start_at, kid)
             )
         else:
-            # None：只更新其他字段，保留原有 expire 不变
             conn.execute(
-                "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=? WHERE id=?",
-                (pattern, match, mode, delete_after_seconds, kid)
+                "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,start_at=? WHERE id=?",
+                (pattern, match, mode, delete_after_seconds, start_at, kid)
             )
-        # 更新回复子表
         conn.execute("DELETE FROM keyword_replies WHERE keyword_id=?", (kid,))
         for i, r in enumerate(replies):
             conn.execute(
@@ -290,6 +278,52 @@ def get_expired_keywords():
     finally:
         conn.close()
 
+# ======== 批量操作 ========
+def bulk_toggle_keywords(ids: list, active: int):
+    if not ids:
+        return
+    conn = get_conn()
+    try:
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"UPDATE keywords SET active=? WHERE id IN ({ph})", [active] + list(ids))
+        conn.commit()
+    finally:
+        conn.close()
+
+def bulk_delete_keywords(ids: list):
+    if not ids:
+        return
+    conn = get_conn()
+    try:
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM keyword_replies WHERE keyword_id IN ({ph})", list(ids))
+        conn.execute(f"DELETE FROM keywords WHERE id IN ({ph})", list(ids))
+        conn.commit()
+    finally:
+        conn.close()
+
+def bulk_toggle_schedules(ids: list, active: int):
+    if not ids:
+        return
+    conn = get_conn()
+    try:
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"UPDATE schedules SET active=? WHERE id IN ({ph})", [active] + list(ids))
+        conn.commit()
+    finally:
+        conn.close()
+
+def bulk_delete_schedules(ids: list):
+    if not ids:
+        return
+    conn = get_conn()
+    try:
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM schedules WHERE id IN ({ph})", list(ids))
+        conn.commit()
+    finally:
+        conn.close()
+
 # ======== 定时任务 ========
 def get_schedules():
     conn = get_conn()
@@ -309,28 +343,28 @@ def get_schedule(sid):
         conn.close()
 
 def add_schedule(name, chat_id, cron, msg_type, msg_text, msg_file_id, msg_caption,
-                 once=0, delete_after_seconds=None):
+                 once=0, delete_after_seconds=None, start_at=None):
     conn = get_conn()
     try:
         conn.execute(
             "INSERT INTO schedules(name,chat_id,cron,msg_type,msg_text,msg_file_id,"
-            "msg_caption,once,delete_after_seconds) VALUES(?,?,?,?,?,?,?,?,?)",
+            "msg_caption,once,delete_after_seconds,start_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (name, chat_id, cron, msg_type, msg_text, msg_file_id, msg_caption,
-             int(once), delete_after_seconds)
+             int(once), delete_after_seconds, start_at)
         )
         conn.commit()
     finally:
         conn.close()
 
 def update_schedule(sid, name, chat_id, cron, msg_type, msg_text, msg_file_id,
-                    msg_caption, once=0, delete_after_seconds=None):
+                    msg_caption, once=0, delete_after_seconds=None, start_at=None):
     conn = get_conn()
     try:
         conn.execute(
             "UPDATE schedules SET name=?,chat_id=?,cron=?,msg_type=?,msg_text=?,"
-            "msg_file_id=?,msg_caption=?,once=?,delete_after_seconds=? WHERE id=?",
+            "msg_file_id=?,msg_caption=?,once=?,delete_after_seconds=?,start_at=? WHERE id=?",
             (name, chat_id, cron, msg_type, msg_text, msg_file_id, msg_caption,
-             int(once), delete_after_seconds, sid)
+             int(once), delete_after_seconds, start_at, sid)
         )
         conn.commit()
     finally:
@@ -538,9 +572,7 @@ def soft_delete_file(fid):
     finally:
         conn.close()
 
-# Bug 1 修复：函数名统一为 get_file_ids_in_use
 def get_file_ids_in_use(file_id):
-    """返回使用该 file_id 的关键词和定时任务列表"""
     conn = get_conn()
     try:
         usages = []
