@@ -19,6 +19,39 @@ bot_app   = None
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 ADMIN_IDS: set[int] = set()
 
+# ======== 漏洞6修复：尝试导入支持超时的 regex 库，回退到标准 re ========
+try:
+    import regex as _regex_mod
+    _HAS_REGEX = True
+    log.info("使用 regex 库（支持超时，防止 ReDoS）")
+except ImportError:
+    _HAS_REGEX = False
+    log.warning("未安装 regex 库，正则匹配无超时保护。建议: pip install regex")
+
+
+def _safe_regex_search(pattern: str, text: str) -> bool:
+    """
+    带超时保护的正则搜索。
+    安装了 regex 库时使用 timeout=1 秒限制，防止 ReDoS。
+    未安装时回退到标准 re（无超时保护，但不影响功能）。
+    """
+    try:
+        if _HAS_REGEX:
+            return bool(_regex_mod.search(pattern, text,
+                                          timeout=1.0,
+                                          flags=_regex_mod.IGNORECASE))
+        else:
+            return bool(re.search(pattern, text, re.IGNORECASE))
+    except TimeoutError:
+        log.warning(f"正则超时（可能为 ReDoS 攻击）: {pattern[:50]}")
+        return False
+    except re.error as e:
+        log.debug(f"正则表达式错误: {e}")
+        return False
+    except Exception as e:
+        log.debug(f"正则匹配异常: {e}")
+        return False
+
 
 def load_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
@@ -42,7 +75,6 @@ def _clean(s):
 
 
 def _is_started(start_at_str):
-    """检查 start_at 是否已到，None 表示立即生效"""
     if not start_at_str:
         return True
     try:
@@ -139,8 +171,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for kw in db.get_keywords():
         if not kw["active"]:
             continue
-
-        # 开始生效时间检查
         if not _is_started(kw.get("start_at")):
             continue
 
@@ -151,10 +181,9 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif match_type == "contains":
             hit = (pattern.lower() in text.lower())
         elif match_type == "regex":
-            try:
-                hit = bool(re.search(pattern, text, re.IGNORECASE))
-            except Exception:
-                pass
+            # 漏洞6修复：使用带超时保护的正则搜索
+            hit = _safe_regex_search(pattern, text)
+
         if not hit:
             continue
 
@@ -389,7 +418,6 @@ def make_job(sid, name, chat_id, msg_type, msg_text, msg_file_id, msg_caption,
 
 
 def _load_single_schedule(s: dict):
-    """加载单个定时任务到 scheduler"""
     once = bool(s["once"])
     cron = s["cron"].strip()
     try:
@@ -409,45 +437,32 @@ def _load_single_schedule(s: dict):
             make_job(s["id"], s["name"], s["chat_id"],
                      s["msg_type"], s["msg_text"], s["msg_file_id"], s["msg_caption"],
                      once, s.get("delete_after_seconds")),
-            trigger,
-            id=f"sched_{s['id']}",
-            replace_existing=True,
+            trigger, id=f"sched_{s['id']}", replace_existing=True,
         )
-        log.info(f"✅ 定时任务已加载 #{s['id']} [{s['name']}] once={once}")
+        log.info(f"✅ 定时任务已加载 #{s['id']} [{s['name']}]")
     except Exception as e:
         log.error(f"❌ 定时任务加载失败 #{s['id']} [{s['name']}]: {e}")
 
 
 def reload_schedules():
     scheduler.remove_all_jobs()
-
-    # 每分钟检查：关键词到期 + 定时任务生效时间到达
-    scheduler.add_job(
-        check_timers,
-        IntervalTrigger(minutes=1),
-        id="__timer_check__",
-        replace_existing=True,
-    )
-
+    scheduler.add_job(check_timers, IntervalTrigger(minutes=1),
+                      id="__timer_check__", replace_existing=True)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for s in db.get_schedules():
         if not s["active"]:
             continue
-        # Bug 3 修复：start_at 未到时跳过，等定时检查来加载
         start_at = s.get("start_at")
         if start_at and str(start_at) > now_str:
-            log.info(f"⏳ 定时任务未到生效时间 #{s['id']} [{s['name']}] start_at={start_at}")
+            log.info(f"⏳ 定时任务未到生效时间 #{s['id']} [{s['name']}]")
             continue
         _load_single_schedule(s)
 
 
-# ======== Bug 1+3 修复：统一定时检查（关键词到期 + 任务生效） ========
 async def check_timers():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # 1. 关键词到期检查
-    expired = db.get_expired_keywords()
-    for kw in expired:
+    # 关键词到期检查
+    for kw in db.get_expired_keywords():
         db.deactivate_keyword(kw["id"])
         log.info(f"⏱ 关键词已到期停用 #{kw['id']} [{kw['pattern']}]")
         for admin_id in ADMIN_IDS:
@@ -455,21 +470,18 @@ async def check_timers():
                 await bot_app.bot.send_message(
                     chat_id=admin_id,
                     text=(f"⏱ <b>关键词已到期</b>\n\n"
-                          f"关键词 <code>{html_module.escape(kw['pattern'])}</code> 已自动停用。\n"
-                          f"统计记录已保留，如需重启请前往管理后台。"),
+                          f"关键词 <code>{html_module.escape(kw['pattern'])}</code> 已自动停用。"),
                     parse_mode="HTML"
                 )
             except Exception:
                 pass
-
-    # 2. Bug 3 修复：检查 start_at 已到但还未加载的定时任务
+    # 定时任务生效时间检查
     for s in db.get_schedules():
         if not s["active"]:
             continue
         start_at = s.get("start_at")
         if not start_at:
             continue
-        # start_at 已到 且 scheduler 里还没这个任务
         if str(start_at) <= now_str and not scheduler.get_job(f"sched_{s['id']}"):
             log.info(f"🕐 定时任务生效时间已到，加载 #{s['id']} [{s['name']}]")
             _load_single_schedule(s)
@@ -502,7 +514,6 @@ def build_app(token, proxy=None):
         ) & ~filters.COMMAND,
         handle_all
     ))
-
     app.add_handler(MessageHandler(
         (filters.ChatType.GROUPS | filters.ChatType.CHANNEL) &
         (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
