@@ -1,20 +1,36 @@
-import hashlib
+import hashlib, hmac, secrets
 from flask import Flask, request, redirect, render_template, jsonify, session
 import database as db
 import os
 
 flask_app = Flask(__name__)
-flask_app.secret_key = os.getenv("SECRET_KEY", "change-this-default-secret")
 
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+SECRET_KEY     = os.getenv("SECRET_KEY", "").strip()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
+
+# 启动时强制校验关键配置（与 README 声明一致）
+if not SECRET_KEY:
+    raise RuntimeError("❌ .env 中未配置 SECRET_KEY，服务拒绝启动。"
+                       "生成命令: python -c \"import secrets; print(secrets.token_hex(32))\"")
+if not ADMIN_PASSWORD:
+    raise RuntimeError("❌ .env 中未配置 ADMIN_PASSWORD，服务拒绝启动。")
+
+flask_app.secret_key = SECRET_KEY
 
 
 def _auth_token():
-    return hashlib.sha256(f"teletask:{ADMIN_PASSWORD}".encode()).hexdigest()
+    """使用 HMAC-SHA256 签名，防止 Cookie 被伪造"""
+    return hmac.new(SECRET_KEY.encode(), f"teletask:{ADMIN_PASSWORD}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def _ct_eq(a: str, b: str) -> bool:
+    """常量时间字符串比较，防止时序攻击"""
+    return secrets.compare_digest((a or "").encode(), (b or "").encode())
 
 
 def check_auth():
-    return request.cookies.get("auth") == _auth_token()
+    return _ct_eq(request.cookies.get("auth", ""), _auth_token())
 
 
 @flask_app.before_request
@@ -33,7 +49,7 @@ def login():
 
 @flask_app.route("/do_login", methods=["POST"])
 def do_login():
-    if request.form.get("pwd") == ADMIN_PASSWORD:
+    if _ct_eq(request.form.get("pwd", ""), ADMIN_PASSWORD):
         resp = redirect("/")
         resp.set_cookie("auth", _auth_token(), max_age=86400 * 7, httponly=True)
         return resp
@@ -60,8 +76,9 @@ def kw_add():
     replies = _parse_replies(request.form)
     das     = _parse_seconds(request.form, "kw_delete")
     eas     = _parse_seconds(request.form, "kw_expire")
+    start_at = _parse_datetime_local(request.form.get("kw_start_at", ""))
     if pattern and replies:
-        db.add_keyword(pattern, match, mode, replies, das, eas)
+        db.add_keyword(pattern, match, mode, replies, das, eas, start_at=start_at)
     return redirect("/")
 
 
@@ -73,8 +90,9 @@ def kw_edit(kid):
     replies = _parse_replies(request.form)
     das     = _parse_seconds(request.form, "kw_delete")
     eas     = _parse_seconds(request.form, "kw_expire")
+    start_at = _parse_datetime_local(request.form.get("kw_start_at", ""))
     if pattern:
-        db.update_keyword(kid, pattern, match, mode, replies, das, eas)
+        db.update_keyword(kid, pattern, match, mode, replies, das, eas, start_at=start_at)
     return redirect("/")
 
 
@@ -127,6 +145,20 @@ def _parse_seconds(f, prefix):
         return val * unit if val > 0 else None
     except (ValueError, TypeError):
         return None
+
+
+def _parse_datetime_local(s):
+    """
+    将 <input type="datetime-local"> 的值（YYYY-MM-DDTHH:MM）
+    转换为数据库使用的 "YYYY-MM-DD HH:MM:SS" 字符串。空值 → None。
+    """
+    s = (s or "").strip()
+    if not s:
+        return None
+    s = s.replace("T", " ")
+    if len(s) == 16:      # 没有秒数
+        s += ":00"
+    return s
 
 
 # ======== 定时任务 CRUD ========
@@ -182,6 +214,7 @@ def _sc_form(f):
         msg_caption          = f.get("msg_caption", "").strip() or None,
         once                 = once,
         delete_after_seconds = das,
+        start_at             = None,   # 定时任务不再使用"开始生效时间"
     )
 
 
@@ -209,7 +242,7 @@ def stats_page():
 
 @flask_app.route("/do_stats_login", methods=["POST"])
 def do_stats_login():
-    if request.form.get("pwd") == ADMIN_PASSWORD:
+    if _ct_eq(request.form.get("pwd", ""), ADMIN_PASSWORD):
         session["stats_auth"] = True
         return redirect("/stats")
     return render_template("stats_login.html", err=True)
@@ -275,7 +308,7 @@ def files_page():
 
 @flask_app.route("/do_files_login", methods=["POST"])
 def do_files_login():
-    if request.form.get("pwd") == ADMIN_PASSWORD:
+    if _ct_eq(request.form.get("pwd", ""), ADMIN_PASSWORD):
         session["files_auth"] = True
         return redirect("/files")
     return render_template("files_login.html", err=True)
@@ -315,6 +348,49 @@ def files_check_usages(fid):
         return jsonify({"usages": [], "file_name": ""})
     usages = db.get_file_ids_in_use(target["file_id"])
     return jsonify({"usages": usages, "file_name": target["file_name"] or ""})
+
+
+# ======== 批量操作 ========
+def _bulk_ids():
+    """从表单取出 ids 列表（int），忽略非法值"""
+    ids = []
+    for v in request.form.getlist("ids"):
+        try:
+            ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+    return ids
+
+
+@flask_app.route("/kw/bulk", methods=["POST"])
+def kw_bulk():
+    action = request.form.get("action", "")
+    ids    = _bulk_ids()
+    if not ids:
+        return redirect("/")
+    if action == "delete":
+        db.bulk_delete_keywords(ids)
+    elif action == "enable":
+        db.bulk_toggle_keywords(ids, 1)
+    elif action == "disable":
+        db.bulk_toggle_keywords(ids, 0)
+    return redirect("/")
+
+
+@flask_app.route("/sc/bulk", methods=["POST"])
+def sc_bulk():
+    action = request.form.get("action", "")
+    ids    = _bulk_ids()
+    if not ids:
+        return redirect("/")
+    if action == "delete":
+        db.bulk_delete_schedules(ids)
+    elif action == "enable":
+        db.bulk_toggle_schedules(ids, 1)
+    elif action == "disable":
+        db.bulk_toggle_schedules(ids, 0)
+    _reload()
+    return redirect("/")
 
 
 @flask_app.route("/debug/routes")
