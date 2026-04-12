@@ -2,3 +2,5 @@ python-telegram-bot[job-queue]
 flask
 apscheduler
 python-dotenv
+openpyxl
+regex
