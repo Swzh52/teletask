@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>批量导入</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;padding:20px;color:#333}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+h1{font-size:1.3rem;color:#5b4fcf}
+.nav-btns{display:flex;gap:8px}
+.btn-back{font-size:.82rem;background:#5b4fcf;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px}
+.nav-link{font-size:.82rem;color:#0f6e56;text-decoration:none;border:1px solid #b2dfd4;padding:5px 14px;border-radius:6px}
+.grid{display:grid;gap:20px;grid-template-columns:1fr 1fr}
+@media(max-width:780px){.grid{grid-template-columns:1fr}}
+.card{background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.card h2{font-size:1.05rem;margin:0 0 14px;color:#444}
+.tip-box{background:#f0eefb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#534ab7;line-height:1.8}
+.cols{font-family:monospace;font-size:.78rem;color:#666;background:#fafafa;border-radius:6px;padding:10px;margin:10px 0;word-break:break-all;line-height:1.7}
+label{display:block;font-size:.85rem;color:#555;margin-bottom:6px;margin-top:10px}
+input[type=file]{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:.875rem}
+.btn-primary{background:#5b4fcf;color:#fff;border:none;padding:9px 22px;border-radius:6px;cursor:pointer;font-size:.875rem;margin-top:12px}
+.btn-primary:hover{background:#4a3db8}
+.btn-primary.green{background:#0f6e56}
+.btn-primary.green:hover{background:#0a5c48}
+.tpl-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tpl-link{font-size:.78rem;color:#5b4fcf;text-decoration:none;padding:4px 10px;border:1px solid #c5c0f0;border-radius:6px;background:#fff}
+.tpl-link:hover{background:#eeedfe}
+.result{background:#e6f9f0;border:1px solid #b2dfd4;border-radius:8px;padding:14px 18px;margin-bottom:20px;white-space:pre-wrap;font-size:.85rem;color:#0a5c48;line-height:1.7;font-family:system-ui,sans-serif}
+.result.err{background:#fde8e8;border-color:#f5c2c2;color:#a32d2d}
+.fmt-tag{display:inline-block;background:#eeedfe;color:#5b4fcf;border-radius:10px;padding:2px 8px;font-size:.72rem;margin-right:4px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📥 批量导入</h1>
+  <div class="nav-btns">
+    <a class="btn-back" href="/">← 返回管理后台</a>
+    <a class="nav-link" href="/stats" target="_blank">📊 统计信息</a>
+    <a class="nav-link" href="/files" target="_blank">📁 文件库</a>
+  </div>
+</div>
+
+{% if msg %}
+<div class="result {{ 'err' if '失败' in msg and '成功 0' in msg else '' }}">{{ msg }}</div>
+{% endif %}
+
+<div class="tip-box">
+  📌 支持 <span class="fmt-tag">CSV</span> <span class="fmt-tag">Excel (.xlsx)</span> <span class="fmt-tag">JSON</span> 三种格式。建议先下载模板查看字段格式。<br>
+  ⚠️ 导入不会覆盖已有数据，只追加。如果 CSV 中文乱码，请另存为 <b>UTF-8</b> 编码。<br>
+  💡 Excel 导入需安装 <code>openpyxl</code>：<code>pip install openpyxl</code>
+</div>
+
+<div class="grid">
+
+  <!-- 关键词导入 -->
+  <div class="card">
+    <h2>🔑 批量导入关键词</h2>
+
+    <p style="font-size:.82rem;color:#666;margin-bottom:6px">字段说明（列名必须小写）：</p>
+    <div class="cols">
+pattern, match, mode, reply_type, reply_text, reply_file_id,
+reply_caption, delete_after_seconds, expire_after_seconds,
+start_at, chat_ids, active
+    </div>
+    <p class="cols" style="background:#fff8e1;color:#856404">
+• <b>相同 pattern 多行</b>会合并成多条回复<br>
+• <b>chat_ids</b> 多个用逗号分隔，如 <code>-1001,-1002</code>；JSON 里可用数组<br>
+• <b>chat_ids 留空</b> = 监控所有群组<br>
+• <b>start_at</b> 格式 "2025-01-01 09:00:00"，留空=立即生效<br>
+• <b>active</b>: 1=启用，0=停用；默认 1
+    </p>
+
+    <div class="tpl-links">
+      <span style="font-size:.78rem;color:#888">下载模板：</span>
+      <a class="tpl-link" href="/import/template/kw_csv">📄 CSV</a>
+      <a class="tpl-link" href="/import/template/kw_json">📄 JSON</a>
+    </div>
+
+    <form method="post" action="/import/kw" enctype="multipart/form-data">
+      <label>选择文件（.csv / .xlsx / .json）</label>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
+      <button class="btn-primary" type="submit">📥 导入关键词</button>
+    </form>
+  </div>
+
+  <!-- 定时任务导入 -->
+  <div class="card">
+    <h2>⏰ 批量导入定时任务</h2>
+
+    <p style="font-size:.82rem;color:#666;margin-bottom:6px">字段说明（列名必须小写）：</p>
+    <div class="cols">
+name, chat_id, cron, once, msg_type, msg_text,
+msg_file_id, msg_caption, delete_after_seconds, active
+    </div>
+    <p class="cols" style="background:#fff8e1;color:#856404">
+• <b>once=0</b>（周期）→ cron 表达式，如 <code>0 9 * * *</code><br>
+• <b>once=1</b>（一次性）→ cron 填具体时间 "2026-01-01 00:00:00"<br>
+• <b>msg_type</b>: text / photo / video / audio / document / animation / voice / sticker<br>
+• <b>active</b>: 1=启用，0=停用；默认 1
+    </p>
+
+    <div class="tpl-links">
+      <span style="font-size:.78rem;color:#888">下载模板：</span>
+      <a class="tpl-link" href="/import/template/sc_csv">📄 CSV</a>
+      <a class="tpl-link" href="/import/template/sc_json">📄 JSON</a>
+    </div>
+
+    <form method="post" action="/import/sc" enctype="multipart/form-data">
+      <label>选择文件（.csv / .xlsx / .json）</label>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
+      <button class="btn-primary green" type="submit">📥 导入定时任务</button>
+    </form>
+  </div>
+
+</div>
+
+</body>
+</html>
