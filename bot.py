@@ -168,10 +168,24 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     chat     = msg.chat
     is_group = chat.type in ("group", "supergroup", "channel")
 
+    # 自动记录群组（用于关键词选择群组的下拉列表）
+    if is_group:
+        try:
+            db.upsert_chat(chat.id,
+                           title=chat.title or getattr(chat, "first_name", "") or str(chat.id),
+                           chat_type=chat.type,
+                           username=getattr(chat, "username", None))
+        except Exception:
+            pass
+
     for kw in db.get_keywords():
         if not kw["active"]:
             continue
         if not _is_started(kw.get("start_at")):
+            continue
+        # 群组过滤：chat_ids 为空 → 监控所有群组（向后兼容）；否则仅监控所选群组
+        allowed = kw.get("chat_ids") or []
+        if allowed and chat.id not in allowed:
             continue
 
         pattern, match_type = kw["pattern"], kw["match"]
