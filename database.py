@@ -96,6 +96,19 @@ def init_db():
             window_seconds INTEGER NOT NULL DEFAULT 300,
             active         INTEGER NOT NULL DEFAULT 1
         );
+        CREATE TABLE IF NOT EXISTS chats (
+            chat_id    INTEGER PRIMARY KEY,
+            title      TEXT,
+            chat_type  TEXT,
+            username   TEXT,
+            last_seen  DATETIME DEFAULT (datetime('now','localtime')),
+            created_at DATETIME DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS keyword_chats (
+            keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+            chat_id    INTEGER NOT NULL,
+            PRIMARY KEY (keyword_id, chat_id)
+        );
     """)
     _migrate(conn)
     conn.close()
@@ -162,6 +175,9 @@ def get_keywords():
                 "SELECT * FROM keyword_replies WHERE keyword_id=? ORDER BY sort_order,id",
                 (kw["id"],)
             ).fetchall()]
+            kw["chat_ids"] = [r["chat_id"] for r in conn.execute(
+                "SELECT chat_id FROM keyword_chats WHERE keyword_id=?", (kw["id"],)
+            ).fetchall()]
             result.append(kw)
         return result
     finally:
@@ -177,12 +193,16 @@ def get_keyword(kid):
         kw["replies"] = [dict(r) for r in conn.execute(
             "SELECT * FROM keyword_replies WHERE keyword_id=? ORDER BY sort_order,id", (kid,)
         ).fetchall()]
+        kw["chat_ids"] = [r["chat_id"] for r in conn.execute(
+            "SELECT chat_id FROM keyword_chats WHERE keyword_id=?", (kid,)
+        ).fetchall()]
         return kw
     finally:
         conn.close()
 
 def add_keyword(pattern, match, mode, replies,
-                delete_after_seconds=None, expire_after_seconds=None, start_at=None):
+                delete_after_seconds=None, expire_after_seconds=None, start_at=None,
+                chat_ids=None):
     conn = get_conn()
     try:
         expire_at = None
@@ -202,12 +222,19 @@ def add_keyword(pattern, match, mode, replies,
                 (kid, r.get("reply_type","text"), r.get("reply_text"),
                  r.get("reply_file_id"), r.get("reply_caption"), i)
             )
+        for cid in (chat_ids or []):
+            conn.execute(
+                "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
+                (kid, int(cid))
+            )
         conn.commit()
+        return kid
     finally:
         conn.close()
 
 def update_keyword(kid, pattern, match, mode, replies,
-                   delete_after_seconds=None, expire_after_seconds=None, start_at=None):
+                   delete_after_seconds=None, expire_after_seconds=None, start_at=None,
+                   chat_ids=None):
     conn = get_conn()
     try:
         if expire_after_seconds == -1:
@@ -238,6 +265,14 @@ def update_keyword(kid, pattern, match, mode, replies,
                 (kid, r.get("reply_type","text"), r.get("reply_text"),
                  r.get("reply_file_id"), r.get("reply_caption"), i)
             )
+        # chat_ids=None → 不修改关联关系；chat_ids=[] → 清空（即所有群组）
+        if chat_ids is not None:
+            conn.execute("DELETE FROM keyword_chats WHERE keyword_id=?", (kid,))
+            for cid in chat_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
+                    (kid, int(cid))
+                )
         conn.commit()
     finally:
         conn.close()
@@ -606,6 +641,69 @@ def is_file_id_active(file_id):
         ).fetchone() is not None
     finally:
         conn.close()
+
+# ======== 群组管理 ========
+def upsert_chat(chat_id, title=None, chat_type=None, username=None):
+    """Bot 收到消息时被动记录/更新群组信息"""
+    if not chat_id:
+        return
+    conn = get_conn()
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        exists = conn.execute("SELECT 1 FROM chats WHERE chat_id=?", (chat_id,)).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE chats SET title=COALESCE(?,title),chat_type=COALESCE(?,chat_type),"
+                "username=COALESCE(?,username),last_seen=? WHERE chat_id=?",
+                (title, chat_type, username, now, chat_id)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO chats(chat_id,title,chat_type,username,last_seen) VALUES(?,?,?,?,?)",
+                (chat_id, title or str(chat_id), chat_type, username, now)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_chats():
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM chats ORDER BY last_seen DESC"
+        ).fetchall()]
+    finally:
+        conn.close()
+
+def add_chat_manual(chat_id, title):
+    """管理员手动添加群组"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO chats(chat_id,title,chat_type) VALUES(?,?,'manual')",
+            (int(chat_id), title or str(chat_id))
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def update_chat_title(chat_id, title):
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE chats SET title=? WHERE chat_id=?", (title, chat_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+def delete_chat(chat_id):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM chats WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM keyword_chats WHERE chat_id=?", (chat_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
 
 # ======== 统计 ========
 def get_stats():
