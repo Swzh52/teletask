@@ -284,19 +284,13 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
       <input name="msg_caption" id="sc-add-caption" oninput="updatePreview('sc-add-caption')">
       <div class="md-preview-wrap" id="sc-add-caption-preview"></div>
     </div>
-    <div class="g2" style="margin-top:12px">
-      <div>
-        <label>🗑 自动删除推送消息（0=不删除）</label>
-        <div class="duration-group">
-          <input type="number" name="sc_delete_value" min="0" value="0">
-          <select name="sc_delete_unit">
-            <option value="1">秒后删除</option><option value="60">分钟后删除</option><option value="3600">小时后删除</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <label>🕐 开始生效时间（留空=立即）</label>
-        <input type="datetime-local" name="sc_start_at">
+    <div style="margin-top:12px">
+      <label>🗑 自动删除推送消息（0=不删除）</label>
+      <div class="duration-group" style="max-width:320px">
+        <input type="number" name="sc_delete_value" min="0" value="0">
+        <select name="sc_delete_unit">
+          <option value="1">秒后删除</option><option value="60">分钟后删除</option><option value="3600">小时后删除</option>
+        </select>
       </div>
     </div>
     <button class="submit" type="submit">➕ 添加定时任务</button>
@@ -322,12 +316,11 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
         <th>任务名</th><th>Chat ID</th><th>Cron/时间</th><th>类型</th><th>状态</th><th>操作</th>
       </tr>
       {% for s in schedules %}
-      <tr data-id="{{ s.id }}" data-start="{{ s.start_at or '' }}">
+      <tr data-id="{{ s.id }}">
         <td class="cb-col"><input type="checkbox" class="row-cb sc-cb" value="{{ s.id }}" onchange="updateCount('sc')"></td>
         <td>
           <b>{{ s.name or '未命名' }}</b>
           {% if s.once %}<span class="once-badge">一次性</span>{% endif %}
-          {% if s.start_at %}<span class="start-badge" title="生效：{{ s.start_at }}">🕐待生效</span>{% endif %}
         </td>
         <td><code>{{ s.chat_id }}</code></td>
         <td><code style="font-size:.74rem">{{ s.cron }}</code></td>
@@ -512,20 +505,13 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
         <input name="msg_caption" id="e-sc-cap" oninput="updatePreview('e-sc-cap')">
         <div class="md-preview-wrap" id="e-sc-cap-preview"></div>
       </div>
-      <div class="g2" style="margin-top:12px">
-        <div>
-          <label>自动删除推送消息</label>
-          <div class="duration-group">
-            <input type="number" name="sc_delete_value" id="e-sc-del-val" min="0" value="0">
-            <select name="sc_delete_unit" id="e-sc-del-unit">
-              <option value="1">秒</option><option value="60">分钟</option><option value="3600">小时</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label>🕐 开始生效时间（留空=立即）</label>
-          <input type="datetime-local" name="sc_start_at" id="e-sc-start-at">
-          <a href="#" style="font-size:.75rem;color:#a32d2d;display:block;margin-top:4px" onclick="document.getElementById('e-sc-start-at').value='';return false">清除生效时间</a>
+      <div style="margin-top:12px">
+        <label>自动删除推送消息</label>
+        <div class="duration-group" style="max-width:320px">
+          <input type="number" name="sc_delete_value" id="e-sc-del-val" min="0" value="0">
+          <select name="sc_delete_unit" id="e-sc-del-unit">
+            <option value="1">秒</option><option value="60">分钟</option><option value="3600">小时</option>
+          </select>
         </div>
       </div>
       <button class="submit" type="submit">保存修改</button>
@@ -800,8 +786,6 @@ function openScEdit(id){
     const fidEl=document.getElementById('e-sc-fid'); if(fidEl) fidEl.value=d.msg_file_id||'';
     const capEl=document.getElementById('e-sc-cap'); if(capEl){capEl.value=d.msg_caption||''; updatePreview('e-sc-cap');}
     _fillDuration(d.delete_after_seconds,'e-sc-del-val','e-sc-del-unit');
-    const startEl=document.getElementById('e-sc-start-at');
-    if(startEl) startEl.value=toDatetimeLocal(d.start_at||'');
     document.getElementById('sc-modal').classList.add('show');
   }).catch(e=>{console.error(e);alert('获取数据失败，请检查网络');});
 }
