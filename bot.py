@@ -424,7 +424,15 @@ def _load_single_schedule(s: dict):
         if once:
             cron_iso = cron.replace(" ", "T")
             run_dt   = datetime.fromisoformat(cron_iso)
-            trigger  = DateTrigger(run_date=run_dt, timezone="Asia/Shanghai")
+            # 过滤已过期的一次性任务：直接停用并跳过加载，避免 APScheduler 报错或立即触发
+            if run_dt <= datetime.now():
+                log.warning(f"⚠️ 一次性任务 #{s['id']} [{s['name']}] 执行时间 {cron} 已过去，自动停用")
+                try:
+                    db.toggle_schedule(s["id"])
+                except Exception:
+                    pass
+                return
+            trigger = DateTrigger(run_date=run_dt, timezone="Asia/Shanghai")
         else:
             parts = cron.split()
             if len(parts) != 5:
@@ -448,13 +456,8 @@ def reload_schedules():
     scheduler.remove_all_jobs()
     scheduler.add_job(check_timers, IntervalTrigger(minutes=1),
                       id="__timer_check__", replace_existing=True)
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for s in db.get_schedules():
         if not s["active"]:
-            continue
-        start_at = s.get("start_at")
-        if start_at and str(start_at) > now_str:
-            log.info(f"⏳ 定时任务未到生效时间 #{s['id']} [{s['name']}]")
             continue
         _load_single_schedule(s)
 
@@ -475,16 +478,6 @@ async def check_timers():
                 )
             except Exception:
                 pass
-    # 定时任务生效时间检查
-    for s in db.get_schedules():
-        if not s["active"]:
-            continue
-        start_at = s.get("start_at")
-        if not start_at:
-            continue
-        if str(start_at) <= now_str and not scheduler.get_job(f"sched_{s['id']}"):
-            log.info(f"🕐 定时任务生效时间已到，加载 #{s['id']} [{s['name']}]")
-            _load_single_schedule(s)
 
 
 async def post_init(application):
