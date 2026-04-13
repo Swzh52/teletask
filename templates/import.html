@@ -13,23 +13,38 @@ h1{font-size:1.3rem;color:#5b4fcf}
 .btn-back{font-size:.82rem;background:#5b4fcf;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px}
 .nav-link{font-size:.82rem;color:#0f6e56;text-decoration:none;border:1px solid #b2dfd4;padding:5px 14px;border-radius:6px}
 .grid{display:grid;gap:20px;grid-template-columns:1fr 1fr}
-@media(max-width:780px){.grid{grid-template-columns:1fr}}
+@media(max-width:980px){.grid{grid-template-columns:1fr}}
 .card{background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .card h2{font-size:1.05rem;margin:0 0 14px;color:#444}
 .tip-box{background:#f0eefb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#534ab7;line-height:1.8}
-.cols{font-family:monospace;font-size:.78rem;color:#666;background:#fafafa;border-radius:6px;padding:10px;margin:10px 0;word-break:break-all;line-height:1.7}
+
 label{display:block;font-size:.85rem;color:#555;margin-bottom:6px;margin-top:10px}
 input[type=file]{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:.875rem}
 .btn-primary{background:#5b4fcf;color:#fff;border:none;padding:9px 22px;border-radius:6px;cursor:pointer;font-size:.875rem;margin-top:12px}
 .btn-primary:hover{background:#4a3db8}
 .btn-primary.green{background:#0f6e56}
 .btn-primary.green:hover{background:#0a5c48}
-.tpl-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tpl-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
 .tpl-link{font-size:.78rem;color:#5b4fcf;text-decoration:none;padding:4px 10px;border:1px solid #c5c0f0;border-radius:6px;background:#fff}
 .tpl-link:hover{background:#eeedfe}
 .result{background:#e6f9f0;border:1px solid #b2dfd4;border-radius:8px;padding:14px 18px;margin-bottom:20px;white-space:pre-wrap;font-size:.85rem;color:#0a5c48;line-height:1.7;font-family:system-ui,sans-serif}
 .result.err{background:#fde8e8;border-color:#f5c2c2;color:#a32d2d}
 .fmt-tag{display:inline-block;background:#eeedfe;color:#5b4fcf;border-radius:10px;padding:2px 8px;font-size:.72rem;margin-right:4px}
+
+/* 字段说明表 */
+details{margin-top:14px;border:1px solid #e5e3f5;border-radius:8px;overflow:hidden}
+details[open]{background:#fafaff}
+summary{cursor:pointer;padding:10px 14px;background:#eeedfe;color:#5b4fcf;font-size:.85rem;font-weight:500;user-select:none}
+summary:hover{background:#e5e3f5}
+.field-table{width:100%;border-collapse:collapse;font-size:.78rem;margin:0}
+.field-table th,.field-table td{padding:8px 12px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+.field-table th{background:#f5f3ff;color:#534ab7;font-weight:500;white-space:nowrap}
+.field-table td.name{font-family:monospace;color:#5b4fcf;white-space:nowrap}
+.field-table td.required{color:#a32d2d;font-weight:500;white-space:nowrap}
+.field-table td.optional{color:#888;white-space:nowrap}
+.field-table code{background:#f0eefb;padding:1px 5px;border-radius:3px;font-size:.75rem}
+.field-table tr:last-child td{border-bottom:none}
+.field-group-header td{background:#faf9ff;color:#888;font-size:.72rem;padding:6px 12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -48,72 +63,221 @@ input[type=file]{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;
 {% endif %}
 
 <div class="tip-box">
-  📌 支持 <span class="fmt-tag">CSV</span> <span class="fmt-tag">Excel (.xlsx)</span> <span class="fmt-tag">JSON</span> 三种格式。建议先下载模板查看字段格式。<br>
-  ⚠️ 导入不会覆盖已有数据，只追加。如果 CSV 中文乱码，请另存为 <b>UTF-8</b> 编码。<br>
-  💡 Excel 导入需安装 <code>openpyxl</code>：<code>pip install openpyxl</code>
+  📌 支持 <span class="fmt-tag">CSV</span> <span class="fmt-tag">Excel (.xlsx)</span> <span class="fmt-tag">JSON</span> 三种格式；三者字段完全一致。<br>
+  📋 导入字段与网页手动添加的表单完全对齐，一一对应。<br>
+  ⚠️ 导入仅追加，不会覆盖已有数据。如果 CSV 中文乱码，请另存为 <b>UTF-8</b> 编码。<br>
+  💡 Excel 需安装：<code>pip install openpyxl</code>
 </div>
 
 <div class="grid">
 
-  <!-- 关键词导入 -->
-  <div class="card">
-    <h2>🔑 批量导入关键词</h2>
+<!-- ===================================================== 关键词导入 ===================================================== -->
+<div class="card">
+  <h2>🔑 批量导入关键词</h2>
 
-    <p style="font-size:.82rem;color:#666;margin-bottom:6px">字段说明（列名必须小写）：</p>
-    <div class="cols">
-pattern, match, mode, reply_type, reply_text, reply_file_id,
-reply_caption, delete_after_seconds, expire_after_seconds,
-start_at, chat_ids, active
-    </div>
-    <p class="cols" style="background:#fff8e1;color:#856404">
-• <b>相同 pattern 多行</b>会合并成多条回复<br>
-• <b>chat_ids</b> 多个用逗号分隔，如 <code>-1001,-1002</code>；JSON 里可用数组<br>
-• <b>chat_ids 留空</b> = 监控所有群组<br>
-• <b>start_at</b> 格式 "2025-01-01 09:00:00"，留空=立即生效<br>
-• <b>active</b>: 1=启用，0=停用；默认 1
-    </p>
+  <details open>
+    <summary>📖 字段说明（点击折叠）</summary>
+    <table class="field-table">
+      <thead>
+        <tr><th>字段</th><th>必填</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr class="field-group-header"><td colspan="3">基础字段</td></tr>
+        <tr>
+          <td class="name">pattern</td>
+          <td class="required">✓ 必填</td>
+          <td>关键词文本 / 正则表达式</td>
+        </tr>
+        <tr>
+          <td class="name">match</td>
+          <td class="optional">可选</td>
+          <td>匹配方式：<code>contains</code> / <code>exact</code> / <code>regex</code>，默认 <code>contains</code></td>
+        </tr>
+        <tr>
+          <td class="name">mode</td>
+          <td class="optional">可选</td>
+          <td>触发模式：<code>random</code>=随机一条 / <code>all</code>=全部发送，默认 <code>random</code></td>
+        </tr>
 
-    <div class="tpl-links">
-      <span style="font-size:.78rem;color:#888">下载模板：</span>
-      <a class="tpl-link" href="/import/template/kw_csv">📄 CSV</a>
-      <a class="tpl-link" href="/import/template/kw_json">📄 JSON</a>
-    </div>
+        <tr class="field-group-header"><td colspan="3">回复内容（同一 pattern 可用多行，合并为多条回复）</td></tr>
+        <tr>
+          <td class="name">reply_type</td>
+          <td class="optional">可选</td>
+          <td>回复类型：<code>text</code> / <code>photo</code> / <code>video</code> / <code>audio</code> / <code>document</code> / <code>animation</code> / <code>voice</code> / <code>sticker</code>，默认 <code>text</code></td>
+        </tr>
+        <tr>
+          <td class="name">reply_text</td>
+          <td class="optional">条件必填</td>
+          <td>文本内容（<code>text</code> 类型必填；支持 HTML：<code>&lt;b&gt;</code> <code>&lt;i&gt;</code> <code>&lt;a&gt;</code> 等）</td>
+        </tr>
+        <tr>
+          <td class="name">reply_file_id</td>
+          <td class="optional">条件必填</td>
+          <td>Telegram file_id（非 text 类型必填，可从 Bot 发送媒体获取）</td>
+        </tr>
+        <tr>
+          <td class="name">reply_caption</td>
+          <td class="optional">可选</td>
+          <td>媒体说明文字（photo/video/document 等可用，支持 HTML）</td>
+        </tr>
 
-    <form method="post" action="/import/kw" enctype="multipart/form-data">
-      <label>选择文件（.csv / .xlsx / .json）</label>
-      <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
-      <button class="btn-primary" type="submit">📥 导入关键词</button>
-    </form>
+        <tr class="field-group-header"><td colspan="3">自动删除回复（两种写法二选一）</td></tr>
+        <tr>
+          <td class="name">delete_after_seconds</td>
+          <td class="optional">可选</td>
+          <td>发送后 N 秒自动删除；<code>0</code> 或空=不自动删除</td>
+        </tr>
+        <tr>
+          <td class="name">delete_after_value<br>delete_after_unit</td>
+          <td class="optional">可选</td>
+          <td>便捷写法：数值 × 单位秒数。如 <code>value=10, unit=60</code> = 10 分钟<br>单位参考：<code>1</code>=秒 <code>60</code>=分 <code>3600</code>=时 <code>86400</code>=天<br>（若同时填了 <code>_seconds</code>，则以 <code>_seconds</code> 为准）</td>
+        </tr>
+
+        <tr class="field-group-header"><td colspan="3">自动到期（关键词本身）</td></tr>
+        <tr>
+          <td class="name">expire_after_seconds</td>
+          <td class="optional">可选</td>
+          <td>N 秒后自动停用该关键词；空=永不过期</td>
+        </tr>
+        <tr>
+          <td class="name">expire_after_value<br>expire_after_unit</td>
+          <td class="optional">可选</td>
+          <td>便捷写法，同上。示例：<code>value=7, unit=86400</code> = 7 天后到期</td>
+        </tr>
+
+        <tr class="field-group-header"><td colspan="3">生效范围和时间</td></tr>
+        <tr>
+          <td class="name">start_at</td>
+          <td class="optional">可选</td>
+          <td>开始生效时间：<code>"YYYY-MM-DD HH:MM:SS"</code> 或 <code>"YYYY-MM-DD HH:MM"</code>；空=立即生效</td>
+        </tr>
+        <tr>
+          <td class="name">chat_ids</td>
+          <td class="optional">可选</td>
+          <td>监控哪些群组，<b>留空 = 所有群组</b><br>
+            CSV/Excel：逗号分隔，如 <code>-1001,-1002</code><br>
+            JSON：可用数组，如 <code>[-1001, -1002]</code></td>
+        </tr>
+        <tr>
+          <td class="name">active</td>
+          <td class="optional">可选</td>
+          <td><code>1</code>=启用（默认） / <code>0</code>=停用</td>
+        </tr>
+      </tbody>
+    </table>
+  </details>
+
+  <div class="tpl-links">
+    <span style="font-size:.78rem;color:#888">下载模板：</span>
+    <a class="tpl-link" href="/import/template/kw_csv">📄 CSV</a>
+    <a class="tpl-link" href="/import/template/kw_json">📄 JSON</a>
   </div>
 
-  <!-- 定时任务导入 -->
-  <div class="card">
-    <h2>⏰ 批量导入定时任务</h2>
+  <form method="post" action="/import/kw" enctype="multipart/form-data">
+    <label>选择文件（.csv / .xlsx / .json）</label>
+    <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
+    <button class="btn-primary" type="submit">📥 导入关键词</button>
+  </form>
+</div>
 
-    <p style="font-size:.82rem;color:#666;margin-bottom:6px">字段说明（列名必须小写）：</p>
-    <div class="cols">
-name, chat_id, cron, once, msg_type, msg_text,
-msg_file_id, msg_caption, delete_after_seconds, active
-    </div>
-    <p class="cols" style="background:#fff8e1;color:#856404">
-• <b>once=0</b>（周期）→ cron 表达式，如 <code>0 9 * * *</code><br>
-• <b>once=1</b>（一次性）→ cron 填具体时间 "2026-01-01 00:00:00"<br>
-• <b>msg_type</b>: text / photo / video / audio / document / animation / voice / sticker<br>
-• <b>active</b>: 1=启用，0=停用；默认 1
-    </p>
+<!-- ===================================================== 定时任务导入 ===================================================== -->
+<div class="card">
+  <h2>⏰ 批量导入定时任务</h2>
 
-    <div class="tpl-links">
-      <span style="font-size:.78rem;color:#888">下载模板：</span>
-      <a class="tpl-link" href="/import/template/sc_csv">📄 CSV</a>
-      <a class="tpl-link" href="/import/template/sc_json">📄 JSON</a>
-    </div>
+  <details open>
+    <summary>📖 字段说明（点击折叠）</summary>
+    <table class="field-table">
+      <thead>
+        <tr><th>字段</th><th>必填</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr class="field-group-header"><td colspan="3">基础字段</td></tr>
+        <tr>
+          <td class="name">name</td>
+          <td class="required">✓ 必填</td>
+          <td>任务名称（用于显示和日志）</td>
+        </tr>
+        <tr>
+          <td class="name">chat_id</td>
+          <td class="required">✓ 必填</td>
+          <td>目标 Chat ID，如 <code>-1001234567890</code></td>
+        </tr>
 
-    <form method="post" action="/import/sc" enctype="multipart/form-data">
-      <label>选择文件（.csv / .xlsx / .json）</label>
-      <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
-      <button class="btn-primary green" type="submit">📥 导入定时任务</button>
-    </form>
+        <tr class="field-group-header"><td colspan="3">触发时机</td></tr>
+        <tr>
+          <td class="name">once</td>
+          <td class="optional">可选</td>
+          <td><code>0</code>=周期执行（默认） / <code>1</code>=一次性任务</td>
+        </tr>
+        <tr>
+          <td class="name">cron</td>
+          <td class="required">✓ 必填</td>
+          <td>
+            周期任务（<code>once=0</code>）：5 字段 cron 表达式<br>
+            &nbsp;&nbsp;<code>0 9 * * *</code> = 每天 9 点<br>
+            &nbsp;&nbsp;<code>*/30 * * * *</code> = 每 30 分钟<br>
+            &nbsp;&nbsp;<code>0 9 * * 1-5</code> = 工作日 9 点<br>
+            &nbsp;&nbsp;<code>0 0 1 * *</code> = 每月 1 日 0 点<br>
+            一次性任务（<code>once=1</code>）：具体时间 <code>"YYYY-MM-DD HH:MM:SS"</code>
+          </td>
+        </tr>
+
+        <tr class="field-group-header"><td colspan="3">消息内容</td></tr>
+        <tr>
+          <td class="name">msg_type</td>
+          <td class="optional">可选</td>
+          <td>消息类型：<code>text</code> / <code>photo</code> / <code>video</code> / <code>audio</code> / <code>document</code> / <code>animation</code> / <code>voice</code> / <code>sticker</code>，默认 <code>text</code></td>
+        </tr>
+        <tr>
+          <td class="name">msg_text</td>
+          <td class="optional">条件必填</td>
+          <td><code>text</code> 类型必填；支持 HTML 富文本</td>
+        </tr>
+        <tr>
+          <td class="name">msg_file_id</td>
+          <td class="optional">条件必填</td>
+          <td>非 text 类型必填</td>
+        </tr>
+        <tr>
+          <td class="name">msg_caption</td>
+          <td class="optional">可选</td>
+          <td>媒体说明（photo/video/document 等可用）</td>
+        </tr>
+
+        <tr class="field-group-header"><td colspan="3">自动删除消息</td></tr>
+        <tr>
+          <td class="name">delete_after_seconds</td>
+          <td class="optional">可选</td>
+          <td>发送后 N 秒自动删除；<code>0</code> 或空=不自动删除</td>
+        </tr>
+        <tr>
+          <td class="name">delete_after_value<br>delete_after_unit</td>
+          <td class="optional">可选</td>
+          <td>便捷写法：数值 × 单位秒数。示例：<code>value=30, unit=60</code> = 30 分钟<br>单位参考：<code>1</code>=秒 <code>60</code>=分 <code>3600</code>=时 <code>86400</code>=天</td>
+        </tr>
+
+        <tr class="field-group-header"><td colspan="3">状态</td></tr>
+        <tr>
+          <td class="name">active</td>
+          <td class="optional">可选</td>
+          <td><code>1</code>=启用（默认） / <code>0</code>=停用</td>
+        </tr>
+      </tbody>
+    </table>
+  </details>
+
+  <div class="tpl-links">
+    <span style="font-size:.78rem;color:#888">下载模板：</span>
+    <a class="tpl-link" href="/import/template/sc_csv">📄 CSV</a>
+    <a class="tpl-link" href="/import/template/sc_json">📄 JSON</a>
   </div>
+
+  <form method="post" action="/import/sc" enctype="multipart/form-data">
+    <label>选择文件（.csv / .xlsx / .json）</label>
+    <input type="file" name="file" accept=".csv,.xlsx,.xls,.json" required>
+    <button class="btn-primary green" type="submit">📥 导入定时任务</button>
+  </form>
+</div>
 
 </div>
 
