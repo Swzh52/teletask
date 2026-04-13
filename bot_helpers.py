@@ -18,15 +18,33 @@ async def delete_later(bot, chat_id, message_id, delay_seconds: float):
 
 
 # ======== 关键词冷却 ========
-# Bug 8 修复：key 改为 (kw_id, chat_id)，不同群组冷却互不影响
+# key 为 (kw_id, chat_id)，不同群组冷却互不影响
 _kw_last_reply: dict[tuple, float] = {}
 KW_COOLDOWN_SECONDS = 5.0
+# 超过此时长未触发的冷却记录视为过期，在下次检查时清理
+_KW_COOLDOWN_GC_INTERVAL = 3600.0  # 每小时清理一次
+_kw_last_gc: float = 0.0
+
+
+def _gc_cooldown():
+    """清理超过冷却期的过期条目，防止内存只增不减。"""
+    global _kw_last_gc
+    now = time.monotonic()
+    if now - _kw_last_gc < _KW_COOLDOWN_GC_INTERVAL:
+        return
+    _kw_last_gc = now
+    cutoff = now - KW_COOLDOWN_SECONDS
+    expired = [k for k, v in _kw_last_reply.items() if v < cutoff]
+    for k in expired:
+        del _kw_last_reply[k]
+
 
 def check_kw_cooldown(kw_id: int, chat_id: int) -> bool:
     """
     返回 True  → 可以回复
     返回 False → 冷却中，跳过
     """
+    _gc_cooldown()
     key = (kw_id, chat_id)
     now = time.monotonic()
     if now - _kw_last_reply.get(key, 0) < KW_COOLDOWN_SECONDS:
