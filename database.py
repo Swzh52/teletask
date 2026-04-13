@@ -233,7 +233,19 @@ def add_keyword(pattern, match, mode, replies,
         with _write_lock:
             expire_at = None
             if expire_after_seconds:
-                expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
+                # Bug 修复：expire_at 应以 start_at（若有且在未来）为基准计算，
+                # 否则会出现"B 设了 start_at=10:10 + 过期5分钟，但在 9:55 创建
+                # 导致 expire_at=10:00（还没开始就算过期），并被随着 A 一起在
+                # check_timers 中被 deactivate" 的问题。
+                base = datetime.now()
+                if start_at:
+                    try:
+                        start_dt = datetime.strptime(str(start_at), "%Y-%m-%d %H:%M:%S")
+                        if start_dt > base:
+                            base = start_dt
+                    except Exception:
+                        pass
+                expire_at = (base + timedelta(seconds=expire_after_seconds)
                              ).strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("BEGIN")
             try:
@@ -278,7 +290,16 @@ def update_keyword(kid, pattern, match, mode, replies,
                         (pattern, match, mode, delete_after_seconds, start_at, kid)
                     )
                 elif expire_after_seconds:
-                    expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
+                    # Bug 修复：同 add_keyword，以 start_at（若在未来）为基准计算
+                    base = datetime.now()
+                    if start_at:
+                        try:
+                            start_dt = datetime.strptime(str(start_at), "%Y-%m-%d %H:%M:%S")
+                            if start_dt > base:
+                                base = start_dt
+                        except Exception:
+                            pass
+                    expire_at = (base + timedelta(seconds=expire_after_seconds)
                                  ).strftime("%Y-%m-%d %H:%M:%S")
                     conn.execute(
                         "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
