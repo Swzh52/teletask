@@ -235,26 +235,31 @@ def add_keyword(pattern, match, mode, replies,
             if expire_after_seconds:
                 expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
                              ).strftime("%Y-%m-%d %H:%M:%S")
-            cur = conn.execute(
-                "INSERT INTO keywords(pattern,match,mode,delete_after_seconds,"
-                "expire_after_seconds,expire_at,start_at) VALUES(?,?,?,?,?,?,?)",
-                (pattern, match, mode, delete_after_seconds, expire_after_seconds, expire_at, start_at)
-            )
-            kid = cur.lastrowid
-            for i, r in enumerate(replies):
-                conn.execute(
-                    "INSERT INTO keyword_replies(keyword_id,reply_type,reply_text,"
-                    "reply_file_id,reply_caption,sort_order) VALUES(?,?,?,?,?,?)",
-                    (kid, r.get("reply_type","text"), r.get("reply_text"),
-                     r.get("reply_file_id"), r.get("reply_caption"), i)
+            conn.execute("BEGIN")
+            try:
+                cur = conn.execute(
+                    "INSERT INTO keywords(pattern,match,mode,delete_after_seconds,"
+                    "expire_after_seconds,expire_at,start_at) VALUES(?,?,?,?,?,?,?)",
+                    (pattern, match, mode, delete_after_seconds, expire_after_seconds, expire_at, start_at)
                 )
-            for cid in (chat_ids or []):
-                conn.execute(
-                    "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
-                    (kid, int(cid))
-                )
-            conn.commit()
-            return kid
+                kid = cur.lastrowid
+                for i, r in enumerate(replies):
+                    conn.execute(
+                        "INSERT INTO keyword_replies(keyword_id,reply_type,reply_text,"
+                        "reply_file_id,reply_caption,sort_order) VALUES(?,?,?,?,?,?)",
+                        (kid, r.get("reply_type","text"), r.get("reply_text"),
+                         r.get("reply_file_id"), r.get("reply_caption"), i)
+                    )
+                for cid in (chat_ids or []):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
+                        (kid, int(cid))
+                    )
+                conn.execute("COMMIT")
+                return kid
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
     finally:
         conn.close()
 
@@ -264,43 +269,48 @@ def update_keyword(kid, pattern, match, mode, replies,
     conn = get_conn()
     try:
         with _write_lock:
-            if expire_after_seconds == -1:
-                conn.execute(
-                    "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
-                    "expire_after_seconds=NULL,expire_at=NULL,start_at=? WHERE id=?",
-                    (pattern, match, mode, delete_after_seconds, start_at, kid)
-                )
-            elif expire_after_seconds:
-                expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
-                             ).strftime("%Y-%m-%d %H:%M:%S")
-                conn.execute(
-                    "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
-                    "expire_after_seconds=?,expire_at=?,start_at=? WHERE id=?",
-                    (pattern, match, mode, delete_after_seconds,
-                     expire_after_seconds, expire_at, start_at, kid)
-                )
-            else:
-                conn.execute(
-                    "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,start_at=? WHERE id=?",
-                    (pattern, match, mode, delete_after_seconds, start_at, kid)
-                )
-            conn.execute("DELETE FROM keyword_replies WHERE keyword_id=?", (kid,))
-            for i, r in enumerate(replies):
-                conn.execute(
-                    "INSERT INTO keyword_replies(keyword_id,reply_type,reply_text,"
-                    "reply_file_id,reply_caption,sort_order) VALUES(?,?,?,?,?,?)",
-                    (kid, r.get("reply_type","text"), r.get("reply_text"),
-                     r.get("reply_file_id"), r.get("reply_caption"), i)
-                )
-            # chat_ids=None → 不修改关联关系；chat_ids=[] → 清空（即所有群组）
-            if chat_ids is not None:
-                conn.execute("DELETE FROM keyword_chats WHERE keyword_id=?", (kid,))
-                for cid in chat_ids:
+            conn.execute("BEGIN")
+            try:
+                if expire_after_seconds == -1:
                     conn.execute(
-                        "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
-                        (kid, int(cid))
+                        "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
+                        "expire_after_seconds=NULL,expire_at=NULL,start_at=? WHERE id=?",
+                        (pattern, match, mode, delete_after_seconds, start_at, kid)
                     )
-            conn.commit()
+                elif expire_after_seconds:
+                    expire_at = (datetime.now() + timedelta(seconds=expire_after_seconds)
+                                 ).strftime("%Y-%m-%d %H:%M:%S")
+                    conn.execute(
+                        "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,"
+                        "expire_after_seconds=?,expire_at=?,start_at=? WHERE id=?",
+                        (pattern, match, mode, delete_after_seconds,
+                         expire_after_seconds, expire_at, start_at, kid)
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE keywords SET pattern=?,match=?,mode=?,delete_after_seconds=?,start_at=? WHERE id=?",
+                        (pattern, match, mode, delete_after_seconds, start_at, kid)
+                    )
+                conn.execute("DELETE FROM keyword_replies WHERE keyword_id=?", (kid,))
+                for i, r in enumerate(replies):
+                    conn.execute(
+                        "INSERT INTO keyword_replies(keyword_id,reply_type,reply_text,"
+                        "reply_file_id,reply_caption,sort_order) VALUES(?,?,?,?,?,?)",
+                        (kid, r.get("reply_type","text"), r.get("reply_text"),
+                         r.get("reply_file_id"), r.get("reply_caption"), i)
+                    )
+                # chat_ids=None → 不修改关联关系；chat_ids=[] → 清空（即所有群组）
+                if chat_ids is not None:
+                    conn.execute("DELETE FROM keyword_chats WHERE keyword_id=?", (kid,))
+                    for cid in chat_ids:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO keyword_chats(keyword_id,chat_id) VALUES(?,?)",
+                            (kid, int(cid))
+                        )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
     finally:
         conn.close()
 
@@ -416,13 +426,15 @@ def add_schedule(name, chat_id, cron, msg_type, msg_text, msg_file_id, msg_capti
     conn = get_conn()
     try:
         with _write_lock:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO schedules(name,chat_id,cron,msg_type,msg_text,msg_file_id,"
                 "msg_caption,once,delete_after_seconds,start_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (name, chat_id, cron, msg_type, msg_text, msg_file_id, msg_caption,
                  int(once), delete_after_seconds, start_at)
             )
+            sid = cur.lastrowid
             conn.commit()
+            return sid
     finally:
         conn.close()
 
