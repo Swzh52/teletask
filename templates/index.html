@@ -101,6 +101,10 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
 .chat-row code{font-size:.72rem;background:transparent;padding:0;color:#888}
 .chat-row .btn{padding:2px 8px;font-size:.72rem}
 @media(max-width:700px){.g2,.g3,.g4{grid-template-columns:1fr}.reply-item-body{grid-template-columns:1fr}.time-bar{flex-direction:column;align-items:stretch}}
+.collapse-btn{background:none;border:1px solid #ddd;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:.78rem;color:#888;line-height:1.6;transition:transform .2s,color .2s}
+.collapse-btn:hover{color:#5b4fcf;border-color:#c5c0f0}
+.collapse-btn.collapsed{transform:rotate(180deg)}
+#kw-list-body.collapsed,#sc-list-body.collapsed{display:none}
 </style>
 </head>
 <body>
@@ -201,10 +205,14 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
   {% if keywords %}
   <div class="section-divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <span style="font-size:.85rem;color:#888">共 {{ keywords|length }} 条规则</span>
+      <span style="font-size:.85rem;color:#888;display:flex;align-items:center;gap:8px">
+        共 {{ keywords|length }} 条规则
+        <button type="button" class="collapse-btn" id="kw-collapse-btn" onclick="toggleCollapse('kw')" title="折叠/展开列表">▲</button>
+      </span>
       <input class="search" id="kw-search" placeholder="搜索关键词…" oninput="filterTable('kw-search','kw-table')">
     </div>
     <!-- Bug 2 修复：批量操作 form 独立，不包裹 table，通过 JS 收集 ids 提交 -->
+    <div id="kw-list-body">
     <div class="bulk-bar">
       <span class="bulk-bar-label">批量操作：</span>
       <button type="button" class="bulk-btn bulk-enable"  onclick="doBulk('kw','enable')">✅ 启用</button>
@@ -244,13 +252,13 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
       </tr>
       {% endfor %}
     </table>
+    </div><!-- /kw-list-body -->
   </div>
   {% else %}
   <p class="empty" style="margin-top:20px">暂无关键词规则</p>
   {% endif %}
 </div>
 
-<!-- ==================== 定时任务 ==================== -->
 <div class="card">
   <h2>⏰ 定时推送任务</h2>
   <form method="post" action="/sc/add" id="sc-add-form" onsubmit="return beforeScSubmit('add')">
@@ -334,10 +342,14 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
   {% if schedules %}
   <div class="section-divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <span style="font-size:.85rem;color:#888">共 {{ schedules|length }} 条任务</span>
+      <span style="font-size:.85rem;color:#888;display:flex;align-items:center;gap:8px">
+        共 {{ schedules|length }} 条任务
+        <button type="button" class="collapse-btn" id="sc-collapse-btn" onclick="toggleCollapse('sc')" title="折叠/展开列表">▲</button>
+      </span>
       <input class="search" id="sc-search" placeholder="搜索任务名…" oninput="filterTable('sc-search','sc-table')">
     </div>
     <!-- Bug 2 修复：批量 form 独立 -->
+    <div id="sc-list-body">
     <div class="bulk-bar">
       <span class="bulk-bar-label">批量操作：</span>
       <button type="button" class="bulk-btn bulk-enable"  onclick="doBulk('sc','enable')">✅ 启用</button>
@@ -371,6 +383,7 @@ input[type=checkbox].row-cb{width:16px;height:16px;cursor:pointer;accent-color:#
       </tr>
       {% endfor %}
     </table>
+    </div><!-- /sc-list-body -->
   </div>
   {% else %}
   <p class="empty" style="margin-top:20px">暂无定时任务</p>
@@ -887,6 +900,22 @@ function _fillDuration(seconds,valId,unitId){
 }
 
 function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+// 折叠/展开列表
+function applyCollapse(type, collapsed){
+  const body=document.getElementById(type+'-list-body');
+  const btn=document.getElementById(type+'-collapse-btn');
+  if(!body||!btn) return;
+  if(collapsed){body.classList.add('collapsed');btn.classList.add('collapsed');btn.title='展开列表';}
+  else{body.classList.remove('collapsed');btn.classList.remove('collapsed');btn.title='折叠列表';}
+}
+function toggleCollapse(type){
+  const body=document.getElementById(type+'-list-body');
+  if(!body) return;
+  const collapsed=!body.classList.contains('collapsed');
+  applyCollapse(type,collapsed);
+  localStorage.setItem('collapse-'+type, collapsed?'1':'0');
+}
 document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('show');});
 });
@@ -896,6 +925,10 @@ document.addEventListener('keydown',e=>{
 
 document.addEventListener('DOMContentLoaded',()=>{
   addReplyItem('add-kw-replies-editor','add-kw',null,0);
+  // 恢复折叠状态
+  ['kw','sc'].forEach(t=>{
+    if(localStorage.getItem('collapse-'+t)==='1') applyCollapse(t,true);
+  });
 });
 </script>
 </body>
