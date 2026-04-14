@@ -550,3 +550,4 @@ def build_schedule_template_json():
         ]
     }
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+
