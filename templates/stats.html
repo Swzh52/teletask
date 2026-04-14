@@ -14,7 +14,10 @@ h1{font-size:1.3rem;color:#185fa5}
 .stat-num{font-size:1.8rem;font-weight:600;color:#185fa5}
 .stat-label{font-size:.78rem;color:#888;margin-top:4px}
 .card{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-h2{font-size:1rem;margin-bottom:14px;color:#444}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.card-header h2{margin-bottom:0}
+.card-header-right{display:flex;align-items:center;gap:10px}
+h2{font-size:1rem;color:#444}
 table{width:100%;border-collapse:collapse;font-size:.83rem}
 th{text-align:left;padding:8px 10px;font-weight:500}
 td{padding:8px 10px;border-bottom:1px solid #f5f5f5;vertical-align:middle}
@@ -28,8 +31,13 @@ code{font-size:.78rem;background:#f5f5f5;padding:2px 6px;border-radius:4px}
 .btn{display:inline-block;padding:4px 10px;border-radius:6px;font-size:.78rem;text-decoration:none;border:none;cursor:pointer}
 .btn-unban{background:#e6f9f0;color:#0f6e56}
 .btn-ban{background:#fde8e8;color:#a32d2d}
-input.search{padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:.875rem;width:240px;margin-bottom:12px}
+input.search{padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:.875rem;width:220px}
 .empty{color:#bbb;text-align:center;padding:20px;font-size:.875rem}
+/* 折叠 */
+.collapse-btn{background:none;border:1px solid #ddd;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.78rem;color:#888;line-height:1.6;transition:color .15s,border-color .15s}
+.collapse-btn:hover{color:#185fa5;border-color:#93c4e8}
+.collapse-btn.collapsed{transform:rotate(180deg)}
+.card-body.collapsed{display:none}
 </style>
 <script>
 function filterTable(inputId, tableId){
@@ -38,6 +46,27 @@ function filterTable(inputId, tableId){
     tr.style.display = tr.innerText.toLowerCase().includes(q)?'':'none';
   });
 }
+function toggleStatsCard(key){
+  const body = document.getElementById('body-'+key);
+  const btn  = document.getElementById('btn-'+key);
+  if(!body||!btn) return;
+  const now = body.classList.contains('collapsed');
+  if(now){ body.classList.remove('collapsed'); btn.classList.remove('collapsed'); btn.title='折叠'; }
+  else   { body.classList.add('collapsed');    btn.classList.add('collapsed');    btn.title='展开'; }
+  try{ localStorage.setItem('stats-collapse-'+key, now?'0':'1'); }catch(e){}
+}
+document.addEventListener('DOMContentLoaded',function(){
+  ['kw','sc','ban'].forEach(function(k){
+    try{
+      if(localStorage.getItem('stats-collapse-'+k)==='1'){
+        const body=document.getElementById('body-'+k);
+        const btn=document.getElementById('btn-'+k);
+        if(body) body.classList.add('collapsed');
+        if(btn)  btn.classList.add('collapsed');
+      }
+    }catch(e){}
+  });
+});
 </script>
 </head>
 <body>
@@ -65,8 +94,14 @@ function filterTable(inputId, tableId){
 
 <!-- 关键词触发记录 -->
 <div class="card">
-  <h2>🔑 关键词触发记录</h2>
-  <input class="search" id="kw-search" placeholder="搜索用户、群组、关键词…" oninput="filterTable('kw-search','kw-table')">
+  <div class="card-header">
+    <h2>🔑 关键词触发记录</h2>
+    <div class="card-header-right">
+      <input class="search" id="kw-search" placeholder="搜索用户、群组、关键词…" oninput="filterTable('kw-search','kw-table')">
+      <button class="collapse-btn" id="btn-kw" onclick="toggleStatsCard('kw')" title="折叠">▲</button>
+    </div>
+  </div>
+  <div id="body-kw" class="card-body">
   {% if kw_logs %}
   <table id="kw-table">
     <thead><tr style="background:#e6f1fb">
@@ -101,11 +136,18 @@ function filterTable(inputId, tableId){
     </tbody>
   </table>
   {% else %}<p class="empty">暂无触发记录</p>{% endif %}
+  </div>
 </div>
 
 <!-- 定时任务执行记录 -->
 <div class="card">
-  <h2>⏰ 定时任务执行记录</h2>
+  <div class="card-header">
+    <h2>⏰ 定时任务执行记录</h2>
+    <div class="card-header-right">
+      <button class="collapse-btn" id="btn-sc" onclick="toggleStatsCard('sc')" title="折叠">▲</button>
+    </div>
+  </div>
+  <div id="body-sc" class="card-body">
   {% if sc_logs %}
   <table>
     <thead><tr style="background:#e6f9f0">
@@ -130,11 +172,18 @@ function filterTable(inputId, tableId){
     </tbody>
   </table>
   {% else %}<p class="empty">暂无执行记录</p>{% endif %}
+  </div>
 </div>
 
 <!-- 封禁用户列表 -->
 <div class="card">
-  <h2>🚫 封禁用户列表</h2>
+  <div class="card-header">
+    <h2>🚫 封禁用户列表</h2>
+    <div class="card-header-right">
+      <button class="collapse-btn" id="btn-ban" onclick="toggleStatsCard('ban')" title="折叠">▲</button>
+    </div>
+  </div>
+  <div id="body-ban" class="card-body">
   {% if banned %}
   <table>
     <thead><tr style="background:#fde8e8">
@@ -155,5 +204,6 @@ function filterTable(inputId, tableId){
     </tbody>
   </table>
   {% else %}<p class="empty">暂无封禁用户</p>{% endif %}
+  </div>
 </div>
 </body></html>
