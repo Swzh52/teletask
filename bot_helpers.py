@@ -55,7 +55,8 @@ def check_kw_cooldown(kw_id: int, chat_id: int) -> bool:
 
 # ======== 用户触发计数（自动Ban用） ========
 _user_trigger_history: dict[int, list[float]] = defaultdict(list)
-_HISTORY_WINDOW = 3600  # 最多保留最近1小时记录
+# Bug5修复：把保留窗口从 1 小时改为 24 小时，覆盖前端允许配置的最大窗口（小时级）
+_HISTORY_WINDOW = 86400  # 最多保留最近 24 小时记录
 
 def record_trigger(user_id: int):
     """记录用户触发一次，并清理过期记录"""
