@@ -225,6 +225,10 @@ function closeBulkModal(){
   </div>
 </div>
 
+{% if err %}
+<div style="margin:1rem auto;max-width:960px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:.75rem 1rem;color:#856404;white-space:pre-wrap;">{{ err }}</div>
+{% endif %}
+
 <div class="card">
   <div class="search-bar">
     <input class="search" id="search" placeholder="搜索文件名、类型、上传者…" oninput="filterTable()">
