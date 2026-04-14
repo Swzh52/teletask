@@ -134,6 +134,23 @@ def init_db():
             chat_id    INTEGER NOT NULL,
             PRIMARY KEY (keyword_id, chat_id)
         );
+        CREATE TABLE IF NOT EXISTS group_mute_rules (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id       INTEGER NOT NULL,
+            trigger_count INTEGER NOT NULL DEFAULT 5,
+            unmute_hour   INTEGER NOT NULL DEFAULT 23,
+            unmute_minute INTEGER NOT NULL DEFAULT 59,
+            active        INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS group_muted_users (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            rule_id    INTEGER NOT NULL,
+            muted_at   DATETIME DEFAULT (datetime('now','localtime')),
+            unmute_at  DATETIME NOT NULL,
+            UNIQUE(user_id, chat_id)
+        );
     """)
         _migrate(conn)
     conn.close()
@@ -161,6 +178,29 @@ def _migrate(conn):
             conn.commit()
         except Exception:
             pass
+    # 确保 group_mute_rules / group_muted_users 表存在（老数据库兼容）
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS group_mute_rules (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id       INTEGER NOT NULL,
+                trigger_count INTEGER NOT NULL DEFAULT 5,
+                unmute_hour   INTEGER NOT NULL DEFAULT 23,
+                unmute_minute INTEGER NOT NULL DEFAULT 59,
+                active        INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS group_muted_users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                chat_id    INTEGER NOT NULL,
+                rule_id    INTEGER NOT NULL,
+                muted_at   DATETIME DEFAULT (datetime('now','localtime')),
+                unmute_at  DATETIME NOT NULL,
+                UNIQUE(user_id, chat_id)
+            );
+        """)
+    except Exception:
+        pass
     # 旧回复字段迁移
     try:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(keywords)").fetchall()]
@@ -858,5 +898,107 @@ def get_stats():
         )
     finally:
         conn.close()
+
+# ======== 群组内关键词屏蔽规则 ========
+def get_group_mute_rules():
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM group_mute_rules ORDER BY id"
+        ).fetchall()]
+    finally:
+        conn.close()
+
+def add_group_mute_rule(chat_id, trigger_count, unmute_hour, unmute_minute):
+    conn = get_conn()
+    try:
+        with _write_lock:
+            conn.execute(
+                "INSERT INTO group_mute_rules(chat_id,trigger_count,unmute_hour,unmute_minute) VALUES(?,?,?,?)",
+                (int(chat_id), int(trigger_count), int(unmute_hour), int(unmute_minute))
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def delete_group_mute_rule(rid):
+    conn = get_conn()
+    try:
+        with _write_lock:
+            conn.execute("DELETE FROM group_mute_rules WHERE id=?", (rid,))
+            conn.commit()
+    finally:
+        conn.close()
+
+def toggle_group_mute_rule(rid):
+    conn = get_conn()
+    try:
+        with _write_lock:
+            conn.execute("UPDATE group_mute_rules SET active=1-active WHERE id=?", (rid,))
+            conn.commit()
+    finally:
+        conn.close()
+
+def mute_user_in_group(user_id, chat_id, rule_id, unmute_at):
+    """屏蔽某用户在某群组的关键词触发，unmute_at 为 datetime 字符串"""
+    conn = get_conn()
+    try:
+        with _write_lock:
+            conn.execute(
+                "INSERT OR REPLACE INTO group_muted_users(user_id,chat_id,rule_id,unmute_at) VALUES(?,?,?,?)",
+                (int(user_id), int(chat_id), int(rule_id),
+                 unmute_at if isinstance(unmute_at, str) else unmute_at.strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def unmute_user_in_group(user_id, chat_id):
+    conn = get_conn()
+    try:
+        with _write_lock:
+            conn.execute(
+                "DELETE FROM group_muted_users WHERE user_id=? AND chat_id=?",
+                (int(user_id), int(chat_id))
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def is_muted_in_group(user_id, chat_id):
+    """返回 unmute_at 字符串（被屏蔽中），或 None（未屏蔽）"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT unmute_at FROM group_muted_users WHERE user_id=? AND chat_id=? AND unmute_at > ?",
+            (int(user_id), int(chat_id), now)
+        ).fetchone()
+        return row["unmute_at"] if row else None
+    finally:
+        conn.close()
+
+def get_expired_group_mutes():
+    """返回已到解除时间的屏蔽记录"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM group_muted_users WHERE unmute_at <= ?", (now,)
+        ).fetchall()]
+    finally:
+        conn.close()
+
+def get_group_muted_users():
+    """获取所有当前仍在屏蔽中的用户（供管理后台展示）"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM group_muted_users WHERE unmute_at > ? ORDER BY muted_at DESC", (now,)
+        ).fetchall()]
+    finally:
+        conn.close()
+
 
 init_db()
